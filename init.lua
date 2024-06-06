@@ -25,7 +25,6 @@ local scale = 1
 local aSize, locked, hasThemeZ = false, false, false
 local configData = {}
 local inputBuffer = {}
-local hierarchyTable = {}
 local configFilePath = string.format('%s/', mq.configDir) -- Default config folder path prefix
 local currentDirectory = mq.configDir
 local selectedFile = nil
@@ -45,6 +44,21 @@ defaults = {
 	locked = false,
 	AutoSize = false,
 }
+
+local function deepcopy(orig)
+	local orig_type = type(orig)
+	local copy
+	if orig_type == 'table' then
+		copy = {}
+		for orig_key, orig_value in next, orig, nil do
+			copy[deepcopy(orig_key)] = deepcopy(orig_value)
+		end
+		setmetatable(copy, deepcopy(getmetatable(orig)))
+	else -- number, string, boolean, etc
+		copy = orig
+	end
+	return copy
+end
 
 local function File_Exists(name)
 	local f = io.open(name, "r")
@@ -113,40 +127,6 @@ local function loadConfig()
 		configData = {}
 		mq.pickle(configFilePath, configData)
 	end
-	hierarchyTable = {configData}
-end
-
-local function stringToValue(value, originalType)
-	if originalType == "number" then
-		return tonumber(value)
-	elseif originalType == "boolean" then
-		return value == "true"
-	else
-		return value
-	end
-end
-
-local function saveConfig()
-	for inputId, value in pairs(inputBuffer) do
-		local keys = {}
-		for key in string.gmatch(inputId, "([^#]+)") do
-			table.insert(keys, key)
-		end
-
-		local current = configData
-		for i = 2, #keys - 1 do
-			if current[keys[i]] == nil then
-				current[keys[i]] = {}
-			end
-			current = current[keys[i]]
-		end
-
-		local finalKey = keys[#keys]
-		local originalType = type(current[finalKey])
-		current[finalKey] = stringToValue(value, originalType)
-	end
-
-	mq.pickle(configFilePath, configData)
 end
 
 local function valueToString(value)
@@ -159,33 +139,69 @@ local function valueToString(value)
 	end
 end
 
-local function drawKeyValueSection(section, data)
+local function stringToValue(value, originalType)
+	if originalType == "number" then
+		return tonumber(value)
+	elseif originalType == "boolean" then
+		return value == "true"
+	elseif originalType == "function" then
+		return load("return " .. value)()
+	else
+		return value
+	end
+end
+
+local function saveConfig()
+	-- Apply changes from inputBuffer back to configData
+	for key, value in pairs(inputBuffer) do
+		local parts = {}
+		for part in string.gmatch(key, "[^%.]+") do
+			table.insert(parts, part)
+		end
+
+		local current = configData
+		for i = 1, #parts - 1 do
+			if type(current[parts[i]]) ~= "table" then
+				current[parts[i]] = {}
+			end
+			current = current[parts[i]]
+		end
+		current[parts[#parts]] = stringToValue(value, type(current[parts[#parts]]))
+	end
+
+	mq.pickle(configFilePath, configData)
+end
+
+local function drawKeyValueSection(section, data, baseKey)
 	for key, value in pairs(data) do
 		if type(value) == "table" then
-			drawSection(section .. "#" .. key, value)
+			drawSection(key, value, baseKey)
 		else
 			ImGui.Text(key)
 			ImGui.SameLine()
 			ImGui.PushItemWidth(-1)
 			local valueStr = valueToString(value)
-			local inputId = "##" .. section .. "#" .. key
+			local inputId = baseKey .. "." .. key
 			if inputBuffer[inputId] == nil then
 				inputBuffer[inputId] = valueStr
 			end
 			inputBuffer[inputId] = ImGui.InputText(inputId, inputBuffer[inputId])
+			if inputBuffer[inputId] ~= valueStr then
+				data[key] = stringToValue(inputBuffer[inputId], type(value))
+			end
 			ImGui.PopItemWidth()
 		end
 	end
 end
 
-local function drawTableSection(section, data)
+local function drawTableSection(section, data, baseKey)
 	ImGui.Columns(3, "table_columns", true)
 	for i, item in ipairs(data) do
 		ImGui.Text(tostring(i))
 		ImGui.NextColumn()
 		ImGui.PushItemWidth(-1)
 		local itemValue = valueToString(item)
-		local inputId = "##" .. section .. "#" .. i
+		local inputId = baseKey .. "." .. i
 		if inputBuffer[inputId] == nil then
 			inputBuffer[inputId] = itemValue
 		end
@@ -205,28 +221,29 @@ local function drawTableSection(section, data)
 	end
 end
 
-local function drawNestedSection(section, data)
+local function drawNestedSection(data, baseKey)
 	for key, value in pairs(data) do
 		if type(value) == "table" then
-			drawSection(section .. "#" .. key, value)
+			drawSection(key, value, baseKey)
 		else
-			drawKeyValueSection(section .. "#" .. key, { [key] = value })
+			drawKeyValueSection(key, { [key] = value }, baseKey)
 		end
 	end
 end
 
-function drawSection(section, data)
+function drawSection(section, data, baseKey)
 	if type(section) ~= "string" then
 		section = tostring(section)
 	end
 	if ImGui.CollapsingHeader(section) then
 		ImGui.Separator()
-		ImGui.BeginChild("Child_" .. section, ImVec2(0, 0), bit32.bor(ImGuiChildFlags.AutoResizeY, ImGuiChildFlags.Border))
+		ImGui.BeginChild("Child_"..section, ImVec2(0, 0), bit32.bor(ImGuiChildFlags.AutoResizeY, ImGuiChildFlags.Border))
 		if type(data) == "table" then
+			local newBaseKey = baseKey and (baseKey .. "." .. section) or section
 			if next(data) ~= nil and type(next(data)) == "number" and type(data[next(data)]) ~= "table" then
-				drawTableSection(section, data)
+				drawTableSection(section, data, newBaseKey)
 			else
-				drawNestedSection(section, data)
+				drawNestedSection(data, newBaseKey)
 			end
 		end
 		ImGui.EndChild()
@@ -234,11 +251,11 @@ function drawSection(section, data)
 	end
 end
 
-local function drawGeneralSection(data)
+local function drawGeneralSection(data, baseKey)
 	if ImGui.CollapsingHeader("General") then
 		ImGui.Separator()
 		ImGui.BeginChild("Child_General", ImVec2(0, 0), bit32.bor(ImGuiChildFlags.AutoResizeY, ImGuiChildFlags.Border))
-		drawKeyValueSection("General", data)
+		drawKeyValueSection("General", data, baseKey)
 		ImGui.EndChild()
 		ImGui.Separator()
 	end
@@ -250,13 +267,13 @@ local function drawConfigGUI()
 		if type(value) == "function" then
 			generalData[key] = tostring(value)
 		elseif type(value) == "table" then
-			drawSection(key, value)
+			drawSection(key, value, "")
 		else
 			generalData[key] = value
 		end
 	end
 	if next(generalData) ~= nil then
-		drawGeneralSection(generalData)
+		drawGeneralSection(generalData, "")
 	end
 	if ImGui.Button("Save Config") then
 		saveConfig()
@@ -281,10 +298,6 @@ local function getDirectoryContents(path)
 end
 
 local function drawFileSelector()
-	if not currentDirectory then
-		currentDirectory = mq.configDir
-	end
-
 	local folders, files = getDirectoryContents(currentDirectory)
 
 	ImGui.Text("Current Directory: " .. currentDirectory)
@@ -336,8 +349,8 @@ local function Draw_GUI()
 				if configFilePath and configFilePath ~= "" then
 					drawConfigGUI()
 				end
-				ImGui.EndChild()
-			end
+			ImGui.EndChild()
+		end
 			ImGui.SetWindowFontScale(1)
 		end
 		LoadTheme.EndTheme(ColorCount, StyleCount)
