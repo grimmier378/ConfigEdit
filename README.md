@@ -1,4 +1,4 @@
-# ConfEdit
+# ConfigEdit
 
 by Grimmier
 
