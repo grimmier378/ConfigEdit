@@ -1,7 +1,6 @@
 --[[
 	Title: Config GUI Script
 	Author: Grimmier
-	Includes: ImGui, MacroQuest
 	Description: GUI for dynamically loading and editing Lua config files.
 ]]
 
@@ -14,7 +13,6 @@ local lfs = require('lfs')
 
 -- Variables
 local script = 'ConfigEditor' -- Change this to the name of your script
-local meName -- Character Name
 local themeName = 'Default'
 local gIcon = Icon.MD_SETTINGS -- Gear Icon for Settings
 local themeID = 1
@@ -372,7 +370,7 @@ end
 
 local function Draw_GUI()
 	if showMainGUI then
-		local winName = string.format('%s##Main_%s', script, meName)
+		local winName = string.format('%s##Main', script)
 		local ColorCount, StyleCount = LoadTheme.StartTheme(theme.Theme[themeID])
 		local openMain, showMain = ImGui.Begin(winName, true, winFlags)
 		if not openMain then
@@ -389,7 +387,7 @@ local function Draw_GUI()
 			end
 			ImGui.Text("Config File: " .. (configFilePath or "None"))
 			drawFileSelector()
-			if ImGui.BeginChild("ConfigEditor", ImVec2(0, 0), true, ImGuiWindowFlags.Border) then
+			if ImGui.BeginChild("ConfigEditor", ImVec2(0, 0), bit32.bor(ImGuiChildFlags.Border, ImGuiChildFlags.AutoResizeY)) then
 				if configFilePath and configFilePath ~= "" then
 					drawConfigGUI()
 				end
@@ -401,7 +399,7 @@ local function Draw_GUI()
 		ImGui.End()
 	end
 	if showConfigGUI then
-		local winName = string.format('%s Config##Config_%s', script, meName)
+		local winName = string.format('%s Config##Config', script)
 		local ColCntConf, StyCntConf = LoadTheme.StartTheme(theme.Theme[themeID])
 		local openConfig, showConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
 		if not openConfig then
@@ -448,7 +446,7 @@ local function Draw_GUI()
 		ImGui.End()
 	end
 	if showExportFileSelector then
-		local winName = string.format('%s Export##Export_%s', script, meName)
+		local winName = string.format('%s Export##Export', script)
 		local ColCntExp, StyCntExp = LoadTheme.StartTheme(theme.Theme[themeID])
 		local openExport, showExport = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
 		if not openExport then
@@ -464,7 +462,6 @@ end
 
 local function Init()
 	loadSettings()
-	meName = mq.TLO.Me.Name()
 	if File_Exists(themezDir) then
 		hasThemeZ = true
 	end
