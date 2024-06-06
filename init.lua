@@ -24,6 +24,8 @@ local showMainGUI, showConfigGUI = true, false
 local scale = 1
 local aSize, locked, hasThemeZ = false, false, false
 local configData = {}
+local inputBuffer = {}
+local hierarchyTable = {}
 local configFilePath = string.format('%s/', mq.configDir) -- Default config folder path prefix
 local currentDirectory = mq.configDir
 local selectedFile = nil
@@ -111,9 +113,39 @@ local function loadConfig()
 		configData = {}
 		mq.pickle(configFilePath, configData)
 	end
+	hierarchyTable = {configData}
+end
+
+local function stringToValue(value, originalType)
+	if originalType == "number" then
+		return tonumber(value)
+	elseif originalType == "boolean" then
+		return value == "true"
+	else
+		return value
+	end
 end
 
 local function saveConfig()
+	for inputId, value in pairs(inputBuffer) do
+		local keys = {}
+		for key in string.gmatch(inputId, "([^#]+)") do
+			table.insert(keys, key)
+		end
+
+		local current = configData
+		for i = 2, #keys - 1 do
+			if current[keys[i]] == nil then
+				current[keys[i]] = {}
+			end
+			current = current[keys[i]]
+		end
+
+		local finalKey = keys[#keys]
+		local originalType = type(current[finalKey])
+		current[finalKey] = stringToValue(value, originalType)
+	end
+
 	mq.pickle(configFilePath, configData)
 end
 
@@ -130,15 +162,17 @@ end
 local function drawKeyValueSection(section, data)
 	for key, value in pairs(data) do
 		if type(value) == "table" then
-			drawSection(key, value)
+			drawSection(section .. "#" .. key, value)
 		else
 			ImGui.Text(key)
 			ImGui.SameLine()
 			ImGui.PushItemWidth(-1)
 			local valueStr = valueToString(value)
-			if ImGui.InputText("##"..key, valueStr, 100) then
-				data[key] = valueStr
+			local inputId = "##" .. section .. "#" .. key
+			if inputBuffer[inputId] == nil then
+				inputBuffer[inputId] = valueStr
 			end
+			inputBuffer[inputId] = ImGui.InputText(inputId, inputBuffer[inputId])
 			ImGui.PopItemWidth()
 		end
 	end
@@ -151,28 +185,32 @@ local function drawTableSection(section, data)
 		ImGui.NextColumn()
 		ImGui.PushItemWidth(-1)
 		local itemValue = valueToString(item)
-		if ImGui.InputText("##item"..i, itemValue, 100) then
-			data[i] = itemValue
+		local inputId = "##" .. section .. "#" .. i
+		if inputBuffer[inputId] == nil then
+			inputBuffer[inputId] = itemValue
+		end
+		if ImGui.InputText(inputId, inputBuffer[inputId]) then
+			data[i] = stringToValue(inputBuffer[inputId], type(item))
 		end
 		ImGui.PopItemWidth()
 		ImGui.NextColumn()
-		if ImGui.Button("Remove##"..i) then
+		if ImGui.Button("Remove##" .. i) then
 			table.remove(data, i)
 		end
 		ImGui.NextColumn()
 	end
 	ImGui.Columns(1)
-	if ImGui.Button("Add Item##"..section) then
+	if ImGui.Button("Add Item##" .. section) then
 		table.insert(data, "")
 	end
 end
 
-local function drawNestedSection(data)
+local function drawNestedSection(section, data)
 	for key, value in pairs(data) do
 		if type(value) == "table" then
-			drawSection(key, value)
+			drawSection(section .. "#" .. key, value)
 		else
-			drawKeyValueSection(key, { [key] = value })
+			drawKeyValueSection(section .. "#" .. key, { [key] = value })
 		end
 	end
 end
@@ -183,12 +221,12 @@ function drawSection(section, data)
 	end
 	if ImGui.CollapsingHeader(section) then
 		ImGui.Separator()
-		ImGui.BeginChild("Child_"..section, ImVec2(0, 0), true, ImGuiWindowFlags.Border)
+		ImGui.BeginChild("Child_" .. section, ImVec2(0, 0), bit32.bor(ImGuiChildFlags.AutoResizeY, ImGuiChildFlags.Border))
 		if type(data) == "table" then
-			if next(data) ~= nil and type(next(data)) == "number" then
+			if next(data) ~= nil and type(next(data)) == "number" and type(data[next(data)]) ~= "table" then
 				drawTableSection(section, data)
 			else
-				drawNestedSection(data)
+				drawNestedSection(section, data)
 			end
 		end
 		ImGui.EndChild()
@@ -199,7 +237,7 @@ end
 local function drawGeneralSection(data)
 	if ImGui.CollapsingHeader("General") then
 		ImGui.Separator()
-		ImGui.BeginChild("Child_General", ImVec2(0, 0), true, ImGuiWindowFlags.Border)
+		ImGui.BeginChild("Child_General", ImVec2(0, 0), bit32.bor(ImGuiChildFlags.AutoResizeY, ImGuiChildFlags.Border))
 		drawKeyValueSection("General", data)
 		ImGui.EndChild()
 		ImGui.Separator()
@@ -243,6 +281,10 @@ local function getDirectoryContents(path)
 end
 
 local function drawFileSelector()
+	if not currentDirectory then
+		currentDirectory = mq.configDir
+	end
+
 	local folders, files = getDirectoryContents(currentDirectory)
 
 	ImGui.Text("Current Directory: " .. currentDirectory)
@@ -290,24 +332,12 @@ local function Draw_GUI()
 			end
 			ImGui.Text("Config File: " .. (configFilePath or "None"))
 			drawFileSelector()
-			if configFilePath and configFilePath ~= "" then
-				drawConfigGUI()
+			if ImGui.BeginChild("ConfigEditor", ImVec2(0, 0), true, ImGuiWindowFlags.Border) then
+				if configFilePath and configFilePath ~= "" then
+					drawConfigGUI()
+				end
+				ImGui.EndChild()
 			end
-			ImGui.Text("Hello World")
-			lIcon = locked and Icon.FA_LOCK or Icon.FA_UNLOCK
-			if ImGui.Button(lIcon) then
-				locked = not locked
-			end
-			ImGui.SameLine()
-			rIcon = aSize and Icon.FA_EXPAND or Icon.FA_COMPRESS
-			if ImGui.Button(rIcon) then
-				aSize = not aSize
-			end
-			local txtLocked = locked and "Unlock Window" or "Lock Window"
-			ImGui.Text(txtLocked)
-			ImGui.SameLine()
-			local txtAutoSize = aSize and "Disable Auto Size" or "Enable Auto Size"
-			ImGui.Text(txtAutoSize)
 			ImGui.SetWindowFontScale(1)
 		end
 		LoadTheme.EndTheme(ColorCount, StyleCount)
