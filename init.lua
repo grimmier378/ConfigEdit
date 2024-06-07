@@ -1,7 +1,6 @@
 --[[
 	Title: Config GUI Script
 	Author: Grimmier
-	Includes: ImGui, MacroQuest
 	Description: GUI for dynamically loading and editing Lua config files.
 ]]
 
@@ -28,6 +27,7 @@ local currentDirectory = mq.configDir
 local saveConfigDirectory = mq.configDir
 local selectedFile = nil
 local inputBuffer = {}
+local childHeight = 300
 
 -- GUI Settings
 local winFlags = bit32.bor(ImGuiWindowFlags.None)
@@ -112,6 +112,7 @@ local function loadConfig()
 		configData = {}
 		mq.pickle(configFilePath, configData)
 	end
+	inputBuffer = {} -- Clear the input buffer
 end
 
 local function valueToString(value)
@@ -145,9 +146,18 @@ local function saveConfig(savePath)
 
 		local current = configData
 		for i = 1, #keys - 1 do
+			if current[keys[i]] == nil then
+				current[keys[i]] = {}
+			end
 			current = current[keys[i]]
 		end
-		current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]]))
+
+		if tonumber(keys[#keys]) then
+			-- If the key is a number, it's an index in an array
+			current[tonumber(keys[#keys])] = stringToValue(value, type(current[tonumber(keys[#keys])]))
+		else
+			current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]]))
+		end
 	end
 
 	mq.pickle(savePath, configData)
@@ -179,22 +189,30 @@ end
 
 local function drawTableSection(section, data, baseKey)
 	ImGui.Columns(3, "table_columns", true)
-	for i, item in ipairs(data) do
+	for i = 1, #data do
 		ImGui.Text(tostring(i))
 		ImGui.NextColumn()
 		ImGui.PushItemWidth(-1)
-		local itemValue = valueToString(item)
+		local itemValue = valueToString(data[i])
 		local inputId = baseKey .. section .. "." .. i
 		if inputBuffer[inputId] == nil then
 			inputBuffer[inputId] = itemValue
 		end
-		if ImGui.InputText(inputId, inputBuffer[inputId]) then
-			data[i] = stringToValue(inputBuffer[inputId], type(item))
+		inputBuffer[inputId] = ImGui.InputText(inputId, inputBuffer[inputId])
+		if inputBuffer[inputId] ~= itemValue then
+			data[i] = stringToValue(inputBuffer[inputId], type(data[i]))
 		end
 		ImGui.PopItemWidth()
 		ImGui.NextColumn()
 		if ImGui.Button("Remove##" .. i) then
 			table.remove(data, i)
+			inputBuffer[inputId] = nil -- Remove the item from the input buffer
+			for j = i, #data do
+				local oldInputId = baseKey .. section .. "." .. (j + 1)
+				local newInputId = baseKey .. section .. "." .. j
+				inputBuffer[newInputId] = inputBuffer[oldInputId]
+				inputBuffer[oldInputId] = nil
+			end
 		end
 		ImGui.NextColumn()
 	end
@@ -221,7 +239,8 @@ function drawSection(section, data, baseKey)
 	local fullKey = baseKey .. section .. "."
 	if ImGui.CollapsingHeader(section) then
 		ImGui.Separator()
-		ImGui.BeginChild("Child_"..section, ImVec2(0, 0), bit32.bor(ImGuiChildFlags.AutoResizeY, ImGuiChildFlags.Border))
+	
+		ImGui.BeginChild("Child_"..section, ImVec2(0, childHeight), bit32.bor(ImGuiChildFlags.Border))
 		if type(data) == "table" then
 			if next(data) ~= nil and type(next(data)) == "number" and type(data[next(data)]) ~= "table" then
 				drawTableSection(section, data, fullKey)
@@ -237,7 +256,7 @@ end
 local function drawGeneralSection(data, baseKey)
 	if ImGui.CollapsingHeader("General") then
 		ImGui.Separator()
-		ImGui.BeginChild("Child_General", ImVec2(0, 0), bit32.bor(ImGuiChildFlags.AutoResizeY, ImGuiChildFlags.Border))
+		ImGui.BeginChild("Child_General", ImVec2(0, childHeight - 30), bit32.bor(ImGuiChildFlags.Border))
 		drawKeyValueSection("General", data, baseKey)
 		ImGui.EndChild()
 		ImGui.Separator()
@@ -246,6 +265,8 @@ end
 
 local function drawConfigGUI()
 	local generalData = {}
+
+	ImGui.Separator()
 	for key, value in pairs(configData) do
 		if type(value) == "function" then
 			generalData[key] = tostring(value)
@@ -257,10 +278,6 @@ local function drawConfigGUI()
 	end
 	if next(generalData) ~= nil then
 		drawGeneralSection(generalData, "")
-	end
-
-	if ImGui.Button("Save Config") then
-		showSaveFileSelector = true
 	end
 end
 
@@ -287,8 +304,9 @@ local function drawFileSelector()
 	if currentDirectory ~= mq.configDir and ImGui.Button("Back") then
 		currentDirectory = currentDirectory:match("(.*)/[^/]+$")
 	end
-
-	if ImGui.BeginCombo("Folders", currentDirectory or "Select a folder") then
+	local tmpFolder = currentDirectory:gsub(mq.configDir.."/", "")
+	ImGui.SetNextItemWidth(180)
+	if ImGui.BeginCombo("Folders", tmpFolder) then
 		for _, folder in ipairs(folders) do
 			if ImGui.Selectable(folder) then
 				currentDirectory = currentDirectory .. '/' .. folder
@@ -296,12 +314,14 @@ local function drawFileSelector()
 		end
 		ImGui.EndCombo()
 	end
-
-	if ImGui.BeginCombo("Files", configFilePath or "Select a file") then
+	local tmpfile = configFilePath:gsub(currentDirectory.."/", "")
+	ImGui.SetNextItemWidth(180)
+	if ImGui.BeginCombo("Files", tmpfile or "Select a file") then
 		for _, file in ipairs(files) do
 			if ImGui.Selectable(file) then
 				selectedFile = file
 				configFilePath = currentDirectory .. '/' .. selectedFile
+				configData = {} -- Clear the previous config data
 				loadConfig()
 			end
 		end
@@ -316,8 +336,9 @@ local function drawSaveFileSelector()
 	if saveConfigDirectory ~= mq.configDir and ImGui.Button("Back") then
 		saveConfigDirectory = saveConfigDirectory:match("(.*)/[^/]+$")
 	end
-
-	if ImGui.BeginCombo("Folders", saveConfigDirectory or "Select a folder") then
+	local tmpFolder = saveConfigDirectory:gsub(mq.configDir.."/", "")
+	ImGui.SetNextItemWidth(120)
+	if ImGui.BeginCombo("Folders", tmpFolder or "Select a folder") then
 		for _, folder in ipairs(folders) do
 			if ImGui.Selectable(folder) then
 				saveConfigDirectory = saveConfigDirectory .. '/' .. folder
@@ -354,8 +375,15 @@ local function Draw_GUI()
 			end
 			ImGui.Text("Config File: " .. (configFilePath or "None"))
 			drawFileSelector()
-			if ImGui.BeginChild("ConfigEditor", ImVec2(0, 0), bit32.bor(ImGuiChildFlags.Border, ImGuiChildFlags.AutoResizeY)) then
+			local sizeX,sizeY = ImGui.GetContentRegionAvail()
+			if ImGui.Button("Save Config") then
+				showSaveFileSelector = true
+			end
+			if ImGui.BeginChild("ConfigEditor", ImVec2(0, sizeY - 30 ), bit32.bor(ImGuiChildFlags.Border)) then
+
+				ImGui.SeparatorText("Config File")
 				if configFilePath and configFilePath ~= "" then
+					childHeight = (sizeY - 30) * .5
 					drawConfigGUI()
 				end
 			ImGui.EndChild()
