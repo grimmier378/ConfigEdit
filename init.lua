@@ -18,15 +18,16 @@ local gIcon = Icon.MD_SETTINGS -- Gear Icon for Settings
 local themeID = 1
 local theme, defaults, settings = {}, {}, {}
 local RUNNING = true
-local showMainGUI, showConfigGUI, showExportFileSelector = true, false, false
+local showMainGUI, showConfigGUI, showSaveFileSelector = true, false, false
 local scale = 1
 local aSize, locked, hasThemeZ = false, false, false
 local configData = {}
 local configFilePath = string.format('%s/', mq.configDir) -- Default config folder path prefix
 local currentDirectory = mq.configDir
-local exportDirectory = mq.configDir
+local saveConfigDirectory = mq.configDir
 local selectedFile = nil
 local inputBuffer = {}
+local childHeight = 300
 
 -- GUI Settings
 local winFlags = bit32.bor(ImGuiWindowFlags.None)
@@ -43,21 +44,6 @@ defaults = {
 	locked = false,
 	AutoSize = false,
 }
-
-local function deepcopy(orig)
-	local orig_type = type(orig)
-	local copy
-	if orig_type == 'table' then
-		copy = {}
-		for orig_key, orig_value in next, orig, nil do
-			copy[deepcopy(orig_key)] = deepcopy(orig_value)
-		end
-		setmetatable(copy, deepcopy(getmetatable(orig)))
-	else -- number, string, boolean, etc
-		copy = orig
-	end
-	return copy
-end
 
 local function File_Exists(name)
 	local f = io.open(name, "r")
@@ -126,6 +112,7 @@ local function loadConfig()
 		configData = {}
 		mq.pickle(configFilePath, configData)
 	end
+	inputBuffer = {} -- Clear the input buffer
 end
 
 local function valueToString(value)
@@ -150,7 +137,7 @@ local function stringToValue(value, originalType)
 	end
 end
 
-local function saveConfig()
+local function saveConfig(savePath)
 	for key, value in pairs(inputBuffer) do
 		local keys = {}
 		for match in string.gmatch(key, "([^%.]+)") do
@@ -159,30 +146,23 @@ local function saveConfig()
 
 		local current = configData
 		for i = 1, #keys - 1 do
+			if current[keys[i]] == nil then
+				current[keys[i]] = {}
+			end
 			current = current[keys[i]]
 		end
-		current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]]))
+
+		if tonumber(keys[#keys]) then
+			-- If the key is a number, it's an index in an array
+			current[tonumber(keys[#keys])] = stringToValue(value, type(current[tonumber(keys[#keys])]))
+		else
+			current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]]))
+		end
 	end
 
-	mq.pickle(configFilePath, configData)
-end
-
-local function exportConfig(exportPath)
-	for key, value in pairs(inputBuffer) do
-		local keys = {}
-		for match in string.gmatch(key, "([^%.]+)") do
-			table.insert(keys, match)
-		end
-
-		local current = configData
-		for i = 1, #keys - 1 do
-			current = current[keys[i]]
-		end
-		current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]]))
-	end
-
-	mq.pickle(exportPath, configData)
-	loadConfig(exportPath)
+	mq.pickle(savePath, configData)
+	configFilePath = savePath
+	loadConfig()
 end
 
 local function drawKeyValueSection(section, data, baseKey)
@@ -209,22 +189,30 @@ end
 
 local function drawTableSection(section, data, baseKey)
 	ImGui.Columns(3, "table_columns", true)
-	for i, item in ipairs(data) do
+	for i = 1, #data do
 		ImGui.Text(tostring(i))
 		ImGui.NextColumn()
 		ImGui.PushItemWidth(-1)
-		local itemValue = valueToString(item)
+		local itemValue = valueToString(data[i])
 		local inputId = baseKey .. section .. "." .. i
 		if inputBuffer[inputId] == nil then
 			inputBuffer[inputId] = itemValue
 		end
-		if ImGui.InputText(inputId, inputBuffer[inputId]) then
-			data[i] = stringToValue(inputBuffer[inputId], type(item))
+		inputBuffer[inputId] = ImGui.InputText(inputId, inputBuffer[inputId])
+		if inputBuffer[inputId] ~= itemValue then
+			data[i] = stringToValue(inputBuffer[inputId], type(data[i]))
 		end
 		ImGui.PopItemWidth()
 		ImGui.NextColumn()
 		if ImGui.Button("Remove##" .. i) then
 			table.remove(data, i)
+			inputBuffer[inputId] = nil -- Remove the item from the input buffer
+			for j = i, #data do
+				local oldInputId = baseKey .. section .. "." .. (j + 1)
+				local newInputId = baseKey .. section .. "." .. j
+				inputBuffer[newInputId] = inputBuffer[oldInputId]
+				inputBuffer[oldInputId] = nil
+			end
 		end
 		ImGui.NextColumn()
 	end
@@ -251,7 +239,8 @@ function drawSection(section, data, baseKey)
 	local fullKey = baseKey .. section .. "."
 	if ImGui.CollapsingHeader(section) then
 		ImGui.Separator()
-		ImGui.BeginChild("Child_"..section, ImVec2(0, 0), bit32.bor(ImGuiChildFlags.AutoResizeY, ImGuiChildFlags.Border))
+	
+		ImGui.BeginChild("Child_"..section, ImVec2(0, childHeight), bit32.bor(ImGuiChildFlags.Border))
 		if type(data) == "table" then
 			if next(data) ~= nil and type(next(data)) == "number" and type(data[next(data)]) ~= "table" then
 				drawTableSection(section, data, fullKey)
@@ -267,7 +256,7 @@ end
 local function drawGeneralSection(data, baseKey)
 	if ImGui.CollapsingHeader("General") then
 		ImGui.Separator()
-		ImGui.BeginChild("Child_General", ImVec2(0, 0), bit32.bor(ImGuiChildFlags.AutoResizeY, ImGuiChildFlags.Border))
+		ImGui.BeginChild("Child_General", ImVec2(0, childHeight - 30), bit32.bor(ImGuiChildFlags.Border))
 		drawKeyValueSection("General", data, baseKey)
 		ImGui.EndChild()
 		ImGui.Separator()
@@ -276,6 +265,8 @@ end
 
 local function drawConfigGUI()
 	local generalData = {}
+
+	ImGui.Separator()
 	for key, value in pairs(configData) do
 		if type(value) == "function" then
 			generalData[key] = tostring(value)
@@ -287,12 +278,6 @@ local function drawConfigGUI()
 	end
 	if next(generalData) ~= nil then
 		drawGeneralSection(generalData, "")
-	end
-	if ImGui.Button("Save Config") then
-		saveConfig()
-	end
-	if ImGui.Button("Export Config") then
-		showExportFileSelector = true
 	end
 end
 
@@ -316,12 +301,12 @@ end
 local function drawFileSelector()
 	local folders, files = getDirectoryContents(currentDirectory)
 
-	ImGui.Text("Current Directory: " .. currentDirectory)
 	if currentDirectory ~= mq.configDir and ImGui.Button("Back") then
 		currentDirectory = currentDirectory:match("(.*)/[^/]+$")
 	end
-
-	if ImGui.BeginCombo("Folders", "Select a folder") then
+	local tmpFolder = currentDirectory:gsub(mq.configDir.."/", "")
+	ImGui.SetNextItemWidth(180)
+	if ImGui.BeginCombo("Folders", tmpFolder) then
 		for _, folder in ipairs(folders) do
 			if ImGui.Selectable(folder) then
 				currentDirectory = currentDirectory .. '/' .. folder
@@ -329,12 +314,14 @@ local function drawFileSelector()
 		end
 		ImGui.EndCombo()
 	end
-
-	if ImGui.BeginCombo("Files", "Select a file") then
+	local tmpfile = configFilePath:gsub(currentDirectory.."/", "")
+	ImGui.SetNextItemWidth(180)
+	if ImGui.BeginCombo("Files", tmpfile or "Select a file") then
 		for _, file in ipairs(files) do
 			if ImGui.Selectable(file) then
 				selectedFile = file
 				configFilePath = currentDirectory .. '/' .. selectedFile
+				configData = {} -- Clear the previous config data
 				loadConfig()
 			end
 		end
@@ -342,29 +329,30 @@ local function drawFileSelector()
 	end
 end
 
-local function drawExportFileSelector()
-	local folders = getDirectoryContents(exportDirectory)
+local function drawSaveFileSelector()
+	local folders = getDirectoryContents(saveConfigDirectory)
 
-	ImGui.Text("Export Directory: " .. exportDirectory)
-	if exportDirectory ~= mq.configDir and ImGui.Button("Back") then
-		exportDirectory = exportDirectory:match("(.*)/[^/]+$")
+	ImGui.Text("Save Directory: " .. saveConfigDirectory)
+	if saveConfigDirectory ~= mq.configDir and ImGui.Button("Back") then
+		saveConfigDirectory = saveConfigDirectory:match("(.*)/[^/]+$")
 	end
-
-	if ImGui.BeginCombo("Folders", "Select a folder") then
+	local tmpFolder = saveConfigDirectory:gsub(mq.configDir.."/", "")
+	ImGui.SetNextItemWidth(120)
+	if ImGui.BeginCombo("Folders", tmpFolder or "Select a folder") then
 		for _, folder in ipairs(folders) do
 			if ImGui.Selectable(folder) then
-				exportDirectory = exportDirectory .. '/' .. folder
+				saveConfigDirectory = saveConfigDirectory .. '/' .. folder
 			end
 		end
 		ImGui.EndCombo()
 	end
 
-	if ImGui.Button("Export") then
-		local exportPath = exportDirectory .. '/' .. selectedFile
-		exportConfig(exportPath)
-		configFilePath = exportPath
+	if ImGui.Button("Save") then
+		local savePath = saveConfigDirectory .. '/' .. selectedFile
+		saveConfig(savePath)
+		configFilePath = savePath
 		loadConfig()
-		showExportFileSelector = false
+		showSaveFileSelector = false
 	end
 end
 
@@ -387,8 +375,15 @@ local function Draw_GUI()
 			end
 			ImGui.Text("Config File: " .. (configFilePath or "None"))
 			drawFileSelector()
-			if ImGui.BeginChild("ConfigEditor", ImVec2(0, 0), bit32.bor(ImGuiChildFlags.Border, ImGuiChildFlags.AutoResizeY)) then
+			local sizeX,sizeY = ImGui.GetContentRegionAvail()
+			if ImGui.Button("Save Config") then
+				showSaveFileSelector = true
+			end
+			if ImGui.BeginChild("ConfigEditor", ImVec2(0, sizeY - 30 ), bit32.bor(ImGuiChildFlags.Border)) then
+
+				ImGui.SeparatorText("Config File")
 				if configFilePath and configFilePath ~= "" then
+					childHeight = (sizeY - 30) * .5
 					drawConfigGUI()
 				end
 			ImGui.EndChild()
@@ -445,15 +440,15 @@ local function Draw_GUI()
 		LoadTheme.EndTheme(ColCntConf, StyCntConf)
 		ImGui.End()
 	end
-	if showExportFileSelector then
-		local winName = string.format('%s Export##Export', script)
+	if showSaveFileSelector then
+		local winName = string.format('%s Save##Save', script)
 		local ColCntExp, StyCntExp = LoadTheme.StartTheme(theme.Theme[themeID])
-		local openExport, showExport = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
-		if not openExport then
-			showExportFileSelector = false
+		local openSaveConfig, showSaveConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
+		if not openSaveConfig then
+			showSaveFileSelector = false
 		end
-		if showExport then
-			drawExportFileSelector()
+		if showSaveConfig then
+			drawSaveFileSelector()
 		end
 		LoadTheme.EndTheme(ColCntExp, StyCntExp)
 		ImGui.End()
