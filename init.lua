@@ -1,6 +1,7 @@
 --[[
 	Title: Config GUI Script
 	Author: Grimmier
+	Includes: ImGui, MacroQuest
 	Description: GUI for dynamically loading and editing Lua config files.
 ]]
 
@@ -18,13 +19,13 @@ local gIcon = Icon.MD_SETTINGS -- Gear Icon for Settings
 local themeID = 1
 local theme, defaults, settings = {}, {}, {}
 local RUNNING = true
-local showMainGUI, showConfigGUI, showExportFileSelector = true, false, false
+local showMainGUI, showConfigGUI, showSaveFileSelector = true, false, false
 local scale = 1
 local aSize, locked, hasThemeZ = false, false, false
 local configData = {}
 local configFilePath = string.format('%s/', mq.configDir) -- Default config folder path prefix
 local currentDirectory = mq.configDir
-local exportDirectory = mq.configDir
+local saveConfigDirectory = mq.configDir
 local selectedFile = nil
 local inputBuffer = {}
 
@@ -43,21 +44,6 @@ defaults = {
 	locked = false,
 	AutoSize = false,
 }
-
-local function deepcopy(orig)
-	local orig_type = type(orig)
-	local copy
-	if orig_type == 'table' then
-		copy = {}
-		for orig_key, orig_value in next, orig, nil do
-			copy[deepcopy(orig_key)] = deepcopy(orig_value)
-		end
-		setmetatable(copy, deepcopy(getmetatable(orig)))
-	else -- number, string, boolean, etc
-		copy = orig
-	end
-	return copy
-end
 
 local function File_Exists(name)
 	local f = io.open(name, "r")
@@ -150,7 +136,7 @@ local function stringToValue(value, originalType)
 	end
 end
 
-local function saveConfig()
+local function saveConfig(savePath)
 	for key, value in pairs(inputBuffer) do
 		local keys = {}
 		for match in string.gmatch(key, "([^%.]+)") do
@@ -164,25 +150,9 @@ local function saveConfig()
 		current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]]))
 	end
 
-	mq.pickle(configFilePath, configData)
-end
-
-local function exportConfig(exportPath)
-	for key, value in pairs(inputBuffer) do
-		local keys = {}
-		for match in string.gmatch(key, "([^%.]+)") do
-			table.insert(keys, match)
-		end
-
-		local current = configData
-		for i = 1, #keys - 1 do
-			current = current[keys[i]]
-		end
-		current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]]))
-	end
-
-	mq.pickle(exportPath, configData)
-	loadConfig(exportPath)
+	mq.pickle(savePath, configData)
+	configFilePath = savePath
+	loadConfig()
 end
 
 local function drawKeyValueSection(section, data, baseKey)
@@ -288,11 +258,9 @@ local function drawConfigGUI()
 	if next(generalData) ~= nil then
 		drawGeneralSection(generalData, "")
 	end
+
 	if ImGui.Button("Save Config") then
-		saveConfig()
-	end
-	if ImGui.Button("Export Config") then
-		showExportFileSelector = true
+		showSaveFileSelector = true
 	end
 end
 
@@ -316,12 +284,11 @@ end
 local function drawFileSelector()
 	local folders, files = getDirectoryContents(currentDirectory)
 
-	ImGui.Text("Current Directory: " .. currentDirectory)
 	if currentDirectory ~= mq.configDir and ImGui.Button("Back") then
 		currentDirectory = currentDirectory:match("(.*)/[^/]+$")
 	end
 
-	if ImGui.BeginCombo("Folders", "Select a folder") then
+	if ImGui.BeginCombo("Folders", currentDirectory or "Select a folder") then
 		for _, folder in ipairs(folders) do
 			if ImGui.Selectable(folder) then
 				currentDirectory = currentDirectory .. '/' .. folder
@@ -330,7 +297,7 @@ local function drawFileSelector()
 		ImGui.EndCombo()
 	end
 
-	if ImGui.BeginCombo("Files", "Select a file") then
+	if ImGui.BeginCombo("Files", configFilePath or "Select a file") then
 		for _, file in ipairs(files) do
 			if ImGui.Selectable(file) then
 				selectedFile = file
@@ -342,29 +309,29 @@ local function drawFileSelector()
 	end
 end
 
-local function drawExportFileSelector()
-	local folders = getDirectoryContents(exportDirectory)
+local function drawSaveFileSelector()
+	local folders = getDirectoryContents(saveConfigDirectory)
 
-	ImGui.Text("Export Directory: " .. exportDirectory)
-	if exportDirectory ~= mq.configDir and ImGui.Button("Back") then
-		exportDirectory = exportDirectory:match("(.*)/[^/]+$")
+	ImGui.Text("Save Directory: " .. saveConfigDirectory)
+	if saveConfigDirectory ~= mq.configDir and ImGui.Button("Back") then
+		saveConfigDirectory = saveConfigDirectory:match("(.*)/[^/]+$")
 	end
 
-	if ImGui.BeginCombo("Folders", "Select a folder") then
+	if ImGui.BeginCombo("Folders", saveConfigDirectory or "Select a folder") then
 		for _, folder in ipairs(folders) do
 			if ImGui.Selectable(folder) then
-				exportDirectory = exportDirectory .. '/' .. folder
+				saveConfigDirectory = saveConfigDirectory .. '/' .. folder
 			end
 		end
 		ImGui.EndCombo()
 	end
 
-	if ImGui.Button("Export") then
-		local exportPath = exportDirectory .. '/' .. selectedFile
-		exportConfig(exportPath)
-		configFilePath = exportPath
+	if ImGui.Button("Save") then
+		local savePath = saveConfigDirectory .. '/' .. selectedFile
+		saveConfig(savePath)
+		configFilePath = savePath
 		loadConfig()
-		showExportFileSelector = false
+		showSaveFileSelector = false
 	end
 end
 
@@ -445,15 +412,15 @@ local function Draw_GUI()
 		LoadTheme.EndTheme(ColCntConf, StyCntConf)
 		ImGui.End()
 	end
-	if showExportFileSelector then
-		local winName = string.format('%s Export##Export', script)
+	if showSaveFileSelector then
+		local winName = string.format('%s Save##Save', script)
 		local ColCntExp, StyCntExp = LoadTheme.StartTheme(theme.Theme[themeID])
-		local openExport, showExport = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
-		if not openExport then
-			showExportFileSelector = false
+		local openSaveConfig, showSaveConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
+		if not openSaveConfig then
+			showSaveFileSelector = false
 		end
-		if showExport then
-			drawExportFileSelector()
+		if showSaveConfig then
+			drawSaveFileSelector()
 		end
 		LoadTheme.EndTheme(ColCntExp, StyCntExp)
 		ImGui.End()
