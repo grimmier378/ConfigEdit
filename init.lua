@@ -28,6 +28,7 @@ local saveConfigDirectory = mq.configDir
 local selectedFile = nil
 local inputBuffer = {}
 local childHeight = 300
+local searchFilter = ""
 
 -- GUI Settings
 local winFlags = bit32.bor(ImGuiWindowFlags.None)
@@ -165,6 +166,26 @@ local function saveConfig(savePath)
 	loadConfig()
 end
 
+local function matchesFilter(key, value)
+	local filter = searchFilter:lower()
+	if type(key) == "number" then
+		key = tostring(key)
+	end
+	if key:lower():find(filter) then
+		return true
+	end
+	if type(value) == "string" and value:lower():find(filter) then
+		return true
+	elseif type(value) == "table" then
+		for k, v in pairs(value) do
+			if matchesFilter(k, v) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 local function drawKeyValueSection(section, data, baseKey)
 	for key, value in pairs(data) do
 		if type(value) == "table" then
@@ -237,29 +258,33 @@ function drawSection(section, data, baseKey)
 		section = tostring(section)
 	end
 	local fullKey = baseKey .. section .. "."
-	if ImGui.CollapsingHeader(section) then
-		ImGui.Separator()
-	
-		ImGui.BeginChild("Child_"..section, ImVec2(0, childHeight), bit32.bor(ImGuiChildFlags.Border))
-		if type(data) == "table" then
-			if next(data) ~= nil and type(next(data)) == "number" and type(data[next(data)]) ~= "table" then
-				drawTableSection(section, data, fullKey)
-			else
-				drawNestedSection(data, fullKey)
+	if searchFilter == "" or matchesFilter(section, data) then
+		if ImGui.CollapsingHeader(section) then
+			ImGui.Separator()
+		
+			ImGui.BeginChild("Child_"..section, ImVec2(0, childHeight), bit32.bor(ImGuiChildFlags.Border))
+			if type(data) == "table" then
+				if next(data) ~= nil and type(next(data)) == "number" and type(data[next(data)]) ~= "table" then
+					drawTableSection(section, data, fullKey)
+				else
+					drawNestedSection(data, fullKey)
+				end
 			end
+			ImGui.EndChild()
+			ImGui.Separator()
 		end
-		ImGui.EndChild()
-		ImGui.Separator()
 	end
 end
 
 local function drawGeneralSection(data, baseKey)
-	if ImGui.CollapsingHeader("General") then
-		ImGui.Separator()
-		ImGui.BeginChild("Child_General", ImVec2(0, childHeight - 30), bit32.bor(ImGuiChildFlags.Border))
-		drawKeyValueSection("General", data, baseKey)
-		ImGui.EndChild()
-		ImGui.Separator()
+	if searchFilter == "" or matchesFilter("General", data) then
+		if ImGui.CollapsingHeader("General") then
+			ImGui.Separator()
+			ImGui.BeginChild("Child_General", ImVec2(0, childHeight - 30), bit32.bor(ImGuiChildFlags.Border))
+			drawKeyValueSection("General", data, baseKey)
+			ImGui.EndChild()
+			ImGui.Separator()
+		end
 	end
 end
 
@@ -379,11 +404,12 @@ local function Draw_GUI()
 			if ImGui.Button("Save Config") then
 				showSaveFileSelector = true
 			end
-			if ImGui.BeginChild("ConfigEditor", ImVec2(0, sizeY - 30 ), bit32.bor(ImGuiChildFlags.Border)) then
+			searchFilter = ImGui.InputTextWithHint("##search", "Search...", searchFilter):lower()
+			if ImGui.BeginChild("ConfigEditor", ImVec2(0, sizeY - 60), bit32.bor(ImGuiChildFlags.Border)) then
 
 				ImGui.SeparatorText("Config File")
 				if configFilePath and configFilePath ~= "" then
-					childHeight = (sizeY - 30) * .5
+					childHeight = (sizeY - 60) * .5
 					drawConfigGUI()
 				end
 			ImGui.EndChild()
