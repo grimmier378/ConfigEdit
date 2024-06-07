@@ -1,7 +1,7 @@
 --[[
 	Title: Config GUI Script
 	Author: Grimmier
-	Description: GUI for dynamically loading and editing Lua config files.
+	Description: GUI for dynamically loading and editing Lua config files and INI files.
 ]]
 
 -- Load Libraries
@@ -10,6 +10,7 @@ local ImGui = require('ImGui')
 local LoadTheme = require('lib.theme_loader')
 local Icon = require('mq.ICONS')
 local lfs = require('lfs')
+local LIP = require('lib.LIP') -- Include the LIP library
 
 -- Variables
 local script = 'ConfigEditor' -- Change this to the name of your script
@@ -28,7 +29,7 @@ local saveConfigDirectory = mq.configDir
 local selectedFile = nil
 local inputBuffer = {}
 local childHeight = 300
-local searchFilter = ""
+local isIniFile = false -- Track if the current file is an INI file
 
 -- GUI Settings
 local winFlags = bit32.bor(ImGuiWindowFlags.None)
@@ -107,11 +108,15 @@ local function loadSettings()
 end
 
 local function loadConfig()
-	if File_Exists(configFilePath) then
-		configData = dofile(configFilePath)
+	if isIniFile then
+		configData = LIP.load(configFilePath)
 	else
-		configData = {}
-		mq.pickle(configFilePath, configData)
+		if File_Exists(configFilePath) then
+			configData = dofile(configFilePath)
+		else
+			configData = {}
+			mq.pickle(configFilePath, configData)
+		end
 	end
 	inputBuffer = {} -- Clear the input buffer
 end
@@ -139,51 +144,35 @@ local function stringToValue(value, originalType)
 end
 
 local function saveConfig(savePath)
-	for key, value in pairs(inputBuffer) do
-		local keys = {}
-		for match in string.gmatch(key, "([^%.]+)") do
-			table.insert(keys, match)
-		end
-
-		local current = configData
-		for i = 1, #keys - 1 do
-			if current[keys[i]] == nil then
-				current[keys[i]] = {}
+	if isIniFile then
+		LIP.save(savePath, configData)
+	else
+		for key, value in pairs(inputBuffer) do
+			local keys = {}
+			for match in string.gmatch(key, "([^%.]+)") do
+				table.insert(keys, match)
 			end
-			current = current[keys[i]]
+
+			local current = configData
+			for i = 1, #keys - 1 do
+				if current[keys[i]] == nil then
+					current[keys[i]] = {}
+				end
+				current = current[keys[i]]
+			end
+
+			if tonumber(keys[#keys]) then
+				-- If the key is a number, it's an index in an array
+				current[tonumber(keys[#keys])] = stringToValue(value, type(current[tonumber(keys[#keys])]))
+			else
+				current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]]))
+			end
 		end
 
-		if tonumber(keys[#keys]) then
-			-- If the key is a number, it's an index in an array
-			current[tonumber(keys[#keys])] = stringToValue(value, type(current[tonumber(keys[#keys])]))
-		else
-			current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]]))
-		end
+		mq.pickle(savePath, configData)
 	end
-
-	mq.pickle(savePath, configData)
 	configFilePath = savePath
 	loadConfig()
-end
-
-local function matchesFilter(key, value)
-	local filter = searchFilter:lower()
-	if type(key) == "number" then
-		key = tostring(key)
-	end
-	if key:lower():find(filter) then
-		return true
-	end
-	if type(value) == "string" and value:lower():find(filter) then
-		return true
-	elseif type(value) == "table" then
-		for k, v in pairs(value) do
-			if matchesFilter(k, v) then
-				return true
-			end
-		end
-	end
-	return false
 end
 
 local function drawKeyValueSection(section, data, baseKey)
@@ -258,51 +247,28 @@ function drawSection(section, data, baseKey)
 		section = tostring(section)
 	end
 	local fullKey = baseKey .. section .. "."
-	if searchFilter == "" or matchesFilter(section, data) then
-		if ImGui.CollapsingHeader(section) then
-			ImGui.Separator()
-
-			-- Dynamically calculate the child window height
-			local numItems = 0
-			if type(data) == "table" then
-				for _ in pairs(data) do
-					numItems = numItems + 1
-				end
+	if ImGui.CollapsingHeader(section) then
+		ImGui.Separator()
+		ImGui.BeginChild("Child_"..section, ImVec2(0, childHeight), bit32.bor(ImGuiChildFlags.Border))
+		if type(data) == "table" then
+			if next(data) ~= nil and type(next(data)) == "number" and type(data[next(data)]) ~= "table" then
+				drawTableSection(section, data, fullKey)
+			else
+				drawNestedSection(data, fullKey)
 			end
-			local dynamicChildHeight = math.min(childHeight, numItems * 20 + 30) -- Adjust the multiplier as needed
-
-			ImGui.BeginChild("Child_" .. section, ImVec2(0, dynamicChildHeight), bit32.bor(ImGuiChildFlags.Border))
-			if type(data) == "table" then
-				if next(data) ~= nil and type(next(data)) == "number" and type(data[next(data)]) ~= "table" then
-					drawTableSection(section, data, fullKey)
-				else
-					drawNestedSection(data, fullKey)
-				end
-			end
-			ImGui.EndChild()
-			ImGui.Separator()
 		end
+		ImGui.EndChild()
+		ImGui.Separator()
 	end
 end
 
 local function drawGeneralSection(data, baseKey)
-	if searchFilter == "" or matchesFilter("General", data) then
-		if ImGui.CollapsingHeader("General") then
-			ImGui.Separator()
-			-- Dynamically calculate the child window height
-			local numItems = 0
-			if type(data) == "table" then
-				for _ in pairs(data) do
-					numItems = numItems + 1
-				end
-			end
-			local dynamicChildHeight = math.min(childHeight, numItems * 20 + 30) -- Adjust the multiplier as needed
-
-			ImGui.BeginChild("Child_General", ImVec2(0, dynamicChildHeight), bit32.bor(ImGuiChildFlags.Border))
-			drawKeyValueSection("General", data, baseKey)
-			ImGui.EndChild()
-			ImGui.Separator()
-		end
+	if ImGui.CollapsingHeader("General") then
+		ImGui.Separator()
+		ImGui.BeginChild("Child_General", ImVec2(0, childHeight - 30), bit32.bor(ImGuiChildFlags.Border))
+		drawKeyValueSection("General", data, baseKey)
+		ImGui.EndChild()
+		ImGui.Separator()
 	end
 end
 
@@ -333,7 +299,7 @@ local function getDirectoryContents(path)
 			local attr = lfs.attributes(f)
 			if attr.mode == "directory" then
 				table.insert(folders, file)
-			elseif attr.mode == "file" and file:match("%.lua$") then
+			elseif attr.mode == "file" and (file:match("%.lua$") or file:match("%.ini$")) then
 				table.insert(files, file)
 			end
 		end
@@ -365,6 +331,7 @@ local function drawFileSelector()
 				selectedFile = file
 				configFilePath = currentDirectory .. '/' .. selectedFile
 				configData = {} -- Clear the previous config data
+				isIniFile = file:match("%.ini$")
 				loadConfig()
 			end
 		end
@@ -422,12 +389,10 @@ local function Draw_GUI()
 			if ImGui.Button("Save Config") then
 				showSaveFileSelector = true
 			end
-			searchFilter = ImGui.InputTextWithHint("##search", "Search...", searchFilter):lower()
-			if ImGui.BeginChild("ConfigEditor", ImVec2(0, sizeY - 60), bit32.bor(ImGuiChildFlags.Border)) then
-
+			if ImGui.BeginChild("ConfigEditor", ImVec2(0, sizeY - 30 ), bit32.bor(ImGuiChildFlags.Border)) then
 				ImGui.SeparatorText("Config File")
 				if configFilePath and configFilePath ~= "" then
-					childHeight = (sizeY - 60) * .5
+					childHeight = (sizeY - 30) * .5
 					drawConfigGUI()
 				end
 			ImGui.EndChild()
