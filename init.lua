@@ -261,8 +261,17 @@ function drawSection(section, data, baseKey)
 	if searchFilter == "" or matchesFilter(section, data) then
 		if ImGui.CollapsingHeader(section) then
 			ImGui.Separator()
-		
-			ImGui.BeginChild("Child_"..section, ImVec2(0, childHeight), bit32.bor(ImGuiChildFlags.Border))
+
+			-- Dynamically calculate the child window height
+			local numItems = 0
+			if type(data) == "table" then
+				for _ in pairs(data) do
+					numItems = numItems + 1
+				end
+			end
+			local dynamicChildHeight = math.min(childHeight, numItems * 20 + 30) -- Adjust the multiplier as needed
+
+			ImGui.BeginChild("Child_" .. section, ImVec2(0, dynamicChildHeight), bit32.bor(ImGuiChildFlags.Border))
 			if type(data) == "table" then
 				if next(data) ~= nil and type(next(data)) == "number" and type(data[next(data)]) ~= "table" then
 					drawTableSection(section, data, fullKey)
@@ -280,7 +289,16 @@ local function drawGeneralSection(data, baseKey)
 	if searchFilter == "" or matchesFilter("General", data) then
 		if ImGui.CollapsingHeader("General") then
 			ImGui.Separator()
-			ImGui.BeginChild("Child_General", ImVec2(0, childHeight - 30), bit32.bor(ImGuiChildFlags.Border))
+			-- Dynamically calculate the child window height
+			local numItems = 0
+			if type(data) == "table" then
+				for _ in pairs(data) do
+					numItems = numItems + 1
+				end
+			end
+			local dynamicChildHeight = math.min(childHeight, numItems * 20 + 30) -- Adjust the multiplier as needed
+
+			ImGui.BeginChild("Child_General", ImVec2(0, dynamicChildHeight), bit32.bor(ImGuiChildFlags.Border))
 			drawKeyValueSection("General", data, baseKey)
 			ImGui.EndChild()
 			ImGui.Separator()
