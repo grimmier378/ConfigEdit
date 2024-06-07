@@ -1,389 +1,410 @@
---[[
-	Title: Config GUI Script
-	Author: Grimmier
-	Description: GUI for dynamically loading and editing Lua config files.
+--[[ 
+	Title: Config GUI Script 
+	Author: Grimmier 
+	Description: GUI for dynamically loading and editing Lua config files. 
 ]]
 
--- Load Libraries
-local mq = require('mq')
-local ImGui = require('ImGui')
-local LoadTheme = require('lib.theme_loader')
-local Icon = require('mq.ICONS')
-local lfs = require('lfs')
+-- Load Libraries 
+local mq = require('mq') 
+local ImGui = require('ImGui') 
+local LoadTheme = require('lib.theme_loader') 
+local Icon = require('mq.ICONS') 
+local lfs = require('lfs') 
 local LIP = require('lib.lip')
 
--- Variables
-local script = 'ConfigEditor' -- Change this to the name of your script
-local themeName = 'Default'
-local gIcon = Icon.MD_SETTINGS -- Gear Icon for Settings
-local themeID = 1
-local theme, defaults, settings = {}, {}, {}
-local RUNNING = true
-local showMainGUI, showConfigGUI, showSaveFileSelector = true, false, false
-local scale = 1
-local aSize, locked, hasThemeZ = false, false, false
-local configData = {}
-local configFilePath = string.format('%s/', mq.configDir) -- Default config folder path prefix
-local currentDirectory = mq.configDir
-local saveConfigDirectory = mq.configDir
-local selectedFile = nil
-local inputBuffer = {}
-local childHeight = 300
-local isIniFile = false
+-- Variables 
+local script = 'ConfigEditor' -- Change this to the name of your script 
+local themeName = 'Default' 
+local gIcon = Icon.MD_SETTINGS -- Gear Icon for Settings 
+local themeID = 1 
+local theme, defaults, settings = {}, {}, {} 
+local RUNNING = true 
+local showMainGUI, showConfigGUI, showSaveFileSelector = true, false, false 
+local scale = 1 
+local aSize, locked, hasThemeZ = false, false, false 
+local configData = {} 
+local configFilePath = string.format('%s/', mq.configDir) -- Default config folder path prefix 
+local currentDirectory = mq.configDir 
+local saveConfigDirectory = mq.configDir 
+local selectedFile = nil 
+local inputBuffer = {} 
+local childHeight = 300 
+local isIniFile = false 
+local searchFilter = ""
 
--- GUI Settings
+-- GUI Settings 
 local winFlags = bit32.bor(ImGuiWindowFlags.None)
 
--- File Paths
-local themeFile = string.format('%s/MyUI/MyThemeZ.lua', mq.configDir)
-local defaultConfigFile = string.format('%s/MyUI/%s/%s_Configs.lua', mq.configDir, script, script)
+-- File Paths 
+local themeFile = string.format('%s/MyUI/MyThemeZ.lua', mq.configDir) 
+local defaultConfigFile = string.format('%s/MyUI/%s/%s_Configs.lua', mq.configDir, script, script) 
 local themezDir = mq.luaDir .. '/themez/init.lua'
 
--- Default Settings
-defaults = {
-	Scale = 1.0,
-	LoadTheme = 'Default',
-	locked = false,
-	AutoSize = false,
+-- Default Settings 
+defaults = { 
+	Scale = 1.0, 
+	LoadTheme = 'Default', 
+	locked = false, 
+	AutoSize = false, 
 }
 
-local function File_Exists(name)
-	local f = io.open(name, "r")
-	if f ~= nil then io.close(f) return true else return false end
+local function File_Exists(name) 
+	local f = io.open(name, "r") 
+	if f ~= nil then io.close(f) return true else return false end 
 end
 
-local function loadTheme()
-	if File_Exists(themeFile) then
-		theme = dofile(themeFile)
-	else
-		theme = require('themes')
-		mq.pickle(themeFile, theme)
-	end
-	themeName = settings[script].LoadTheme or 'Default'
-	if theme and theme.Theme then
-		for tID, tData in pairs(theme.Theme) do
-			if tData['Name'] == themeName then
-				themeID = tID
-			end
+local function loadTheme() 
+	if File_Exists(themeFile) then 
+		theme = dofile(themeFile) 
+	else 
+		theme = require('themes') 
+		mq.pickle(themeFile, theme) 
+	end 
+	themeName = settings[script].LoadTheme or 'Default' 
+	if theme and theme.Theme then 
+		for tID, tData in pairs(theme.Theme) do 
+			if tData['Name'] == themeName then 
+				themeID = tID 
+			end 
+		end 
+	end 
+end
+
+local function loadSettings() 
+	local newSetting = false 
+	if not File_Exists(defaultConfigFile) then 
+		settings[script] = defaults 
+		mq.pickle(defaultConfigFile, settings) 
+		loadSettings() 
+	else 
+		settings = dofile(defaultConfigFile) 
+		if settings[script] == nil then 
+			settings[script] = {} 
+			settings[script] = defaults 
+			newSetting = true 
+		end 
+	end 
+	if settings[script].locked == nil then 
+		settings[script].locked = false 
+		newSetting = true 
+	end 
+	if settings[script].Scale == nil then 
+		settings[script].Scale = 1 
+		newSetting = true 
+	end 
+	if not settings[script].LoadTheme then 
+		settings[script].LoadTheme = 'Default' 
+		newSetting = true 
+	end 
+	if settings[script].AutoSize == nil then 
+		settings[script].AutoSize = aSize 
+		newSetting = true 
+	end 
+	loadTheme() 
+	aSize = settings[script].AutoSize 
+	locked = settings[script].locked 
+	scale = settings[script].Scale 
+	themeName = settings[script].LoadTheme 
+	if newSetting then mq.pickle(defaultConfigFile, settings) end 
+end
+
+local function loadConfig() 
+	if File_Exists(configFilePath) then 
+		if isIniFile then 
+			configData = LIP.load(configFilePath) 
+		else 
+			configData = dofile(configFilePath) 
+		end 
+	else 
+		configData = {} 
+		mq.pickle(configFilePath, configData) 
+	end 
+	inputBuffer = {} -- Clear the input buffer 
+end
+
+local function valueToString(value) 
+	if type(value) == "function" then 
+		return "function() return true end" 
+	elseif type(value) == "table" then 
+		return "Table" 
+	else 
+		return tostring(value) 
+	end 
+end
+
+local function stringToValue(value, originalType) 
+	if originalType == "number" then 
+		return tonumber(value) 
+	elseif originalType == "boolean" then 
+		return value == "true" 
+	elseif originalType == "function" then 
+		return load("return " .. value)() 
+	else 
+		return value 
+	end 
+end
+
+local function saveConfig(savePath) 
+	for key, value in pairs(inputBuffer) do 
+		local keys = {} 
+		for match in string.gmatch(key, "([^%.]+)") do 
+			table.insert(keys, match) 
 		end
-	end
-end
 
-local function loadSettings()
-	local newSetting = false
-	if not File_Exists(defaultConfigFile) then
-		settings[script] = defaults
-		mq.pickle(defaultConfigFile, settings)
-		loadSettings()
-	else
-		settings = dofile(defaultConfigFile)
-		if settings[script] == nil then
-			settings[script] = {}
-			settings[script] = defaults
-			newSetting = true
+		local current = configData 
+		for i = 1, #keys - 1 do 
+			if current[keys[i]] == nil then 
+				current[keys[i]] = {} 
+			end 
+			current = current[keys[i]] 
 		end
+
+		if tonumber(keys[#keys]) then 
+			current[tonumber(keys[#keys])] = stringToValue(value, type(current[tonumber(keys[#keys])])) 
+		else 
+			current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]])) 
+		end 
 	end
-	if settings[script].locked == nil then
-		settings[script].locked = false
-		newSetting = true
-	end
-	if settings[script].Scale == nil then
-		settings[script].Scale = 1
-		newSetting = true
-	end
-	if not settings[script].LoadTheme then
-		settings[script].LoadTheme = 'Default'
-		newSetting = true
-	end
-	if settings[script].AutoSize == nil then
-		settings[script].AutoSize = aSize
-		newSetting = true
-	end
-	loadTheme()
-	aSize = settings[script].AutoSize
-	locked = settings[script].locked
-	scale = settings[script].Scale
-	themeName = settings[script].LoadTheme
-	if newSetting then mq.pickle(defaultConfigFile, settings) end
+
+	if isIniFile then 
+		LIP.save(savePath, configData) 
+	else 
+		mq.pickle(savePath, configData) 
+	end 
+	configFilePath = savePath 
+	loadConfig() 
 end
 
-local function loadConfig()
-	if File_Exists(configFilePath) then
-		if isIniFile then
-			configData = LIP.load(configFilePath)
-		else
-			configData = dofile(configFilePath)
-		end
-	else
-		configData = {}
-		mq.pickle(configFilePath, configData)
+local function matchesFilter(key, value)
+	local filter = searchFilter:lower()
+	if type(key) == "number" then
+		key = tostring(key)
 	end
-	inputBuffer = {} -- Clear the input buffer
-end
-
-local function valueToString(value)
-	if type(value) == "function" then
-		return "function() return true end"
+	if key:lower():find(filter) then
+		return true
+	end
+	if type(value) == "string" and value:lower():find(filter) then
+		return true
 	elseif type(value) == "table" then
-		return "Table"
-	else
-		return tostring(value)
-	end
-end
-
-local function stringToValue(value, originalType)
-	if originalType == "number" then
-		return tonumber(value)
-	elseif originalType == "boolean" then
-		return value == "true"
-	elseif originalType == "function" then
-		return load("return " .. value)()
-	else
-		return value
-	end
-end
-
-local function saveConfig(savePath)
-	for key, value in pairs(inputBuffer) do
-		local keys = {}
-		for match in string.gmatch(key, "([^%.]+)") do
-			table.insert(keys, match)
-		end
-
-		local current = configData
-		for i = 1, #keys - 1 do
-			if current[keys[i]] == nil then
-				current[keys[i]] = {}
-			end
-			current = current[keys[i]]
-		end
-
-		if tonumber(keys[#keys]) then
-			current[tonumber(keys[#keys])] = stringToValue(value, type(current[tonumber(keys[#keys])]))
-		else
-			current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]]))
-		end
-	end
-
-	if isIniFile then
-		LIP.save(savePath, configData)
-	else
-		mq.pickle(savePath, configData)
-	end
-	configFilePath = savePath
-	loadConfig()
-end
-
-local function drawKeyValueSection(section, data, baseKey)
-	for key, value in pairs(data) do
-		if type(value) == "table" then
-			drawSection(key, value, baseKey)
-		else
-			ImGui.Text(key)
-			ImGui.SameLine()
-			ImGui.PushItemWidth(-1)
-			local valueStr = valueToString(value)
-			local inputId = baseKey .. key
-			if inputBuffer[inputId] == nil then
-				inputBuffer[inputId] = valueStr
-			end
-			inputBuffer[inputId] = ImGui.InputText(inputId, inputBuffer[inputId])
-			if inputBuffer[inputId] ~= valueStr then
-				data[key] = stringToValue(inputBuffer[inputId], type(value))
-			end
-			ImGui.PopItemWidth()
-		end
-	end
-end
-
-local function drawTableSection(section, data, baseKey)
-	ImGui.Columns(3, "table_columns", true)
-	for i = 1, #data do
-		ImGui.Text(tostring(i))
-		ImGui.NextColumn()
-		ImGui.PushItemWidth(-1)
-		local itemValue = valueToString(data[i])
-		local inputId = baseKey .. section .. "." .. i
-		if inputBuffer[inputId] == nil then
-			inputBuffer[inputId] = itemValue
-		end
-		inputBuffer[inputId] = ImGui.InputText(inputId, inputBuffer[inputId])
-		if inputBuffer[inputId] ~= itemValue then
-			data[i] = stringToValue(inputBuffer[inputId], type(data[i]))
-		end
-		ImGui.PopItemWidth()
-		ImGui.NextColumn()
-		if ImGui.Button("Remove##" .. i) then
-			table.remove(data, i)
-			inputBuffer[inputId] = nil -- Remove the item from the input buffer
-			for j = i, #data do
-				local oldInputId = baseKey .. section .. "." .. (j + 1)
-				local newInputId = baseKey .. section .. "." .. j
-				inputBuffer[newInputId] = inputBuffer[oldInputId]
-				inputBuffer[oldInputId] = nil
+		for k, v in pairs(value) do
+			if matchesFilter(k, v) then
+				return true
 			end
 		end
-		ImGui.NextColumn()
 	end
-	ImGui.Columns(1)
-	if ImGui.Button("Add Item##" .. section) then
-		table.insert(data, "")
-	end
+	return false
 end
 
-local function drawNestedSection(data, baseKey)
-	for key, value in pairs(data) do
-		if type(value) == "table" then
-			drawSection(key, value, baseKey)
-		else
-			drawKeyValueSection(key, { [key] = value }, baseKey)
-		end
-	end
+local function drawKeyValueSection(section, data, baseKey) 
+	for key, value in pairs(data) do 
+		if type(value) == "table" then 
+			drawSection(key, value, baseKey) 
+		else 
+			ImGui.Text(key) 
+			ImGui.SameLine() 
+			ImGui.PushItemWidth(-1) 
+			local valueStr = valueToString(value) 
+			local inputId = baseKey .. key 
+			if inputBuffer[inputId] == nil then 
+				inputBuffer[inputId] = valueStr 
+			end 
+			inputBuffer[inputId] = ImGui.InputText(inputId, inputBuffer[inputId]) 
+			if inputBuffer[inputId] ~= valueStr then 
+				data[key] = stringToValue(inputBuffer[inputId], type(value)) 
+			end 
+			ImGui.PopItemWidth() 
+		end 
+	end 
 end
 
-function drawSection(section, data, baseKey)
-	if type(section) ~= "string" then
-		section = tostring(section)
-	end
-	local fullKey = baseKey .. section .. "."
-	if ImGui.CollapsingHeader(section) then
-		ImGui.Separator()
-		ImGui.BeginChild("Child_"..section, ImVec2(0, childHeight), bit32.bor(ImGuiChildFlags.Border))
-		if type(data) == "table" then
-			if next(data) ~= nil and type(next(data)) == "number" and type(data[next(data)]) ~= "table" then
-				drawTableSection(section, data, fullKey)
-			else
-				drawNestedSection(data, fullKey)
-			end
-		end
-		ImGui.EndChild()
-		ImGui.Separator()
+local function drawTableSection(section, data, baseKey) 
+	ImGui.Columns(3, "table_columns", true) 
+	for i = 1, #data do 
+		ImGui.Text(tostring(i)) 
+		ImGui.NextColumn() 
+		ImGui.PushItemWidth(-1) 
+		local itemValue = valueToString(data[i]) 
+		local inputId = baseKey .. section .. "." .. i 
+		if inputBuffer[inputId] == nil then 
+			inputBuffer[inputId] = itemValue 
+		end 
+		inputBuffer[inputId] = ImGui.InputText(inputId, inputBuffer[inputId]) 
+		if inputBuffer[inputId] ~= itemValue then 
+			data[i] = stringToValue(inputBuffer[inputId], type(data[i])) 
+		end 
+		ImGui.PopItemWidth() 
+		ImGui.NextColumn() 
+		if ImGui.Button("Remove##" .. i) then 
+			table.remove(data, i) 
+			inputBuffer[inputId] = nil -- Remove the item from the input buffer 
+			for j = i, #data do 
+				local oldInputId = baseKey .. section .. "." .. (j + 1) 
+				local newInputId = baseKey .. section .. "." .. j 
+				inputBuffer[newInputId] = inputBuffer[oldInputId] 
+				inputBuffer[oldInputId] = nil 
+			end 
+		end 
+		ImGui.NextColumn() 
+	end 
+	ImGui.Columns(1) 
+	if ImGui.Button("Add Item##" .. section) then 
+		table.insert(data, "") 
+	end 
+end
+
+local function drawNestedSection(data, baseKey) 
+	for key, value in pairs(data) do 
+		if type(value) == "table" then 
+			drawSection(key, value, baseKey) 
+		else 
+			drawKeyValueSection(key, { [key] = value }, baseKey) 
+		end 
+	end 
+end
+
+function drawSection(section, data, baseKey) 
+	if type(section) ~= "string" then 
+		section = tostring(section) 
+	end 
+	local fullKey = baseKey .. section .. "." 
+	if searchFilter == "" or matchesFilter(section, data) then
+		if ImGui.CollapsingHeader(section) then 
+			ImGui.Separator() 
+			ImGui.BeginChild("Child_"..section, ImVec2(0, childHeight), bit32.bor(ImGuiChildFlags.Border)) 
+			if type(data) == "table" then 
+				if next(data) ~= nil and type(next(data)) == "number" and type(data[next(data)]) ~= "table" then 
+					drawTableSection(section, data, fullKey) 
+				else 
+					drawNestedSection(data, fullKey) 
+				end 
+			end 
+			ImGui.EndChild() 
+			ImGui.Separator() 
+		end 
 	end
 end
 
 local function drawGeneralSection(data, baseKey)
-	if ImGui.CollapsingHeader("General") then
-		ImGui.Separator()
-		ImGui.BeginChild("Child_General", ImVec2(0, childHeight - 30), bit32.bor(ImGuiChildFlags.Border))
-		drawKeyValueSection("General", data, baseKey)
-		ImGui.EndChild()
-		ImGui.Separator()
-	end
-end
-
-local function drawConfigGUI()
-	local generalData = {}
-
-	ImGui.Separator()
-	for key, value in pairs(configData) do
-		if type(value) == "function" then
-			generalData[key] = tostring(value)
-		elseif type(value) == "table" then
-			drawSection(key, value, "")
-		else
-			generalData[key] = value
-		end
-	end
-	if next(generalData) ~= nil then
-		drawGeneralSection(generalData, "")
-	end
-end
-
-local function getDirectoryContents(path)
-	local folders = {}
-	local files = {}
-	for file in lfs.dir(path) do
-		if file ~= "." and file ~= ".." then
-			local f = path .. '/' .. file
-			local attr = lfs.attributes(f)
-			if attr.mode == "directory" then
-				table.insert(folders, file)
-			elseif attr.mode == "file" and ((isIniFile and file:match("%.ini$")) or (not isIniFile and file:match("%.lua$"))) then
-				table.insert(files, file)
-			end
-		end
-	end
-	return folders, files
-end
-
-local function drawFileSelector()
-	local folders, files = getDirectoryContents(currentDirectory)
-
-	if currentDirectory ~= mq.configDir and ImGui.Button("Back") then
-		currentDirectory = currentDirectory:match("(.*)/[^/]+$")
-	end
-	local tmpFolder = currentDirectory:gsub(mq.configDir.."/", "")
-	ImGui.SetNextItemWidth(180)
-	if ImGui.BeginCombo("Folders", tmpFolder) then
-		for _, folder in ipairs(folders) do
-			if ImGui.Selectable(folder) then
-				currentDirectory = currentDirectory .. '/' .. folder
-			end
-		end
-		ImGui.EndCombo()
-	end
-	local tmpfile = configFilePath:gsub(currentDirectory.."/", "")
-	ImGui.SetNextItemWidth(180)
-	if ImGui.BeginCombo("Files", tmpfile or "Select a file") then
-		for _, file in ipairs(files) do
-			if ImGui.Selectable(file) then
-				selectedFile = file
-				configFilePath = currentDirectory .. '/' .. selectedFile
-				configData = {} -- Clear the previous config data
-				loadConfig()
-			end
-		end
-		ImGui.EndCombo()
-	end
-end
-
-local function drawSaveFileSelector()
-	local folders = getDirectoryContents(saveConfigDirectory)
-
-	ImGui.Text("Save Directory: " .. saveConfigDirectory)
-	if saveConfigDirectory ~= mq.configDir and ImGui.Button("Back") then
-		saveConfigDirectory = saveConfigDirectory:match("(.*)/[^/]+$")
-	end
-	local tmpFolder = saveConfigDirectory:gsub(mq.configDir.."/", "")
-	ImGui.SetNextItemWidth(120)
-	if ImGui.BeginCombo("Folders", tmpFolder or "Select a folder") then
-		for _, folder in ipairs(folders) do
-			if ImGui.Selectable(folder) then
-				saveConfigDirectory = saveConfigDirectory .. '/' .. folder
-			end
-		end
-		ImGui.EndCombo()
-	end
-
-	if ImGui.Button("Save") then
-		local savePath = saveConfigDirectory .. '/' .. selectedFile
-		saveConfig(savePath)
-		configFilePath = savePath
-		loadConfig()
-		showSaveFileSelector = false
-	end
-end
-
-local function Draw_GUI()
-	if showMainGUI then
-		local winName = string.format('%s##Main', script)
-		local ColorCount, StyleCount = LoadTheme.StartTheme(theme.Theme[themeID])
-		local openMain, showMain = ImGui.Begin(winName, true, winFlags)
-		if not openMain then
-			showMainGUI = false
-		end
-		if showMain then
-			ImGui.SetWindowFontScale(scale)
-			ImGui.Text(gIcon)
-			if ImGui.IsItemHovered() then
-				ImGui.SetTooltip("Settings")
-				if ImGui.IsMouseReleased(0) then
-					showConfigGUI = not showConfigGUI
-				end
-			end
-			ImGui.Text("Config File: " .. (configFilePath or "None"))
+	if searchFilter == "" or matchesFilter("General", data) then
+		if ImGui.CollapsingHeader("General") then
 			ImGui.Separator()
-			ImGui.Text("Mode: " .. (isIniFile and "INI" or "LUA"))
+			ImGui.BeginChild("Child_General", ImVec2(0, childHeight - 30), bit32.bor(ImGuiChildFlags.Border))
+			drawKeyValueSection("General", data, baseKey)
+			ImGui.EndChild()
+			ImGui.Separator()
+		end
+	end
+end
+
+local function drawConfigGUI() 
+	local generalData = {} 
+	ImGui.Separator() 
+	for key, value in pairs(configData) do 
+		if type(value) == "function" then 
+			generalData[key] = tostring(value) 
+		elseif type(value) == "table" then 
+			drawSection(key, value, "") 
+		else 
+			generalData[key] = value 
+		end 
+	end 
+	if next(generalData) ~= nil then 
+		drawGeneralSection(generalData, "") 
+	end 
+end
+
+local function getDirectoryContents(path) 
+	local folders = {} 
+	local files = {} 
+	for file in lfs.dir(path) do 
+		if file ~= "." and file ~= ".." then 
+			local f = path .. '/' .. file 
+			local attr = lfs.attributes(f) 
+			if attr.mode == "directory" then 
+				table.insert(folders, file) 
+			elseif attr.mode == "file" and ((isIniFile and file:match("%.ini$")) or (not isIniFile and file:match("%.lua$"))) then 
+				table.insert(files, file) 
+			end 
+		end 
+	end 
+	return folders, files 
+end
+
+local function drawFileSelector() 
+	local folders, files = getDirectoryContents(currentDirectory) 
+	if currentDirectory ~= mq.configDir and ImGui.Button("Back") then 
+		currentDirectory = currentDirectory:match("(.*)/[^/]+$") 
+	end 
+	local tmpFolder = currentDirectory:gsub(mq.configDir.."/", "") 
+	ImGui.SetNextItemWidth(180) 
+	if ImGui.BeginCombo("Folders", tmpFolder) then 
+		for _, folder in ipairs(folders) do 
+			if ImGui.Selectable(folder) then 
+				currentDirectory = currentDirectory .. '/' .. folder 
+			end 
+		end 
+		ImGui.EndCombo() 
+	end 
+	local tmpfile = configFilePath:gsub(currentDirectory.."/", "") 
+	ImGui.SetNextItemWidth(180) 
+	if ImGui.BeginCombo("Files", tmpfile or "Select a file") then 
+		for _, file in ipairs(files) do 
+			if ImGui.Selectable(file) then 
+				selectedFile = file 
+				configFilePath = currentDirectory .. '/' .. selectedFile 
+				configData = {} -- Clear the previous config data 
+				loadConfig() 
+			end 
+		end 
+		ImGui.EndCombo() 
+	end 
+end
+
+local function drawSaveFileSelector() 
+	local folders = getDirectoryContents(saveConfigDirectory) 
+	ImGui.Text("Save Directory: " .. saveConfigDirectory) 
+	if saveConfigDirectory ~= mq.configDir and ImGui.Button("Back") then 
+		saveConfigDirectory = saveConfigDirectory:match("(.*)/[^/]+$") 
+	end 
+	local tmpFolder = saveConfigDirectory:gsub(mq.configDir.."/", "") 
+	ImGui.SetNextItemWidth(120) 
+	if ImGui.BeginCombo("Folders", tmpFolder or "Select a folder") then 
+		for _, folder in ipairs(folders) do 
+			if ImGui.Selectable(folder) then 
+				saveConfigDirectory = saveConfigDirectory .. '/' .. folder 
+			end 
+		end 
+		ImGui.EndCombo() 
+	end
+	if ImGui.Button("Save") then 
+		local savePath = saveConfigDirectory .. '/' .. selectedFile 
+		saveConfig(savePath) 
+		configFilePath = savePath 
+		loadConfig() 
+		showSaveFileSelector = false 
+	end 
+end
+
+local function Draw_GUI() 
+	if showMainGUI then 
+		local winName = string.format('%s##Main', script) 
+		local ColorCount, StyleCount = LoadTheme.StartTheme(theme.Theme[themeID]) 
+		local openMain, showMain = ImGui.Begin(winName, true, winFlags) 
+		if not openMain then 
+			showMainGUI = false 
+		end 
+		if showMain then 
+			ImGui.SetWindowFontScale(scale) 
+			ImGui.Text(gIcon) 
+			if ImGui.IsItemHovered() then 
+				ImGui.SetTooltip("Settings") 
+				if ImGui.IsMouseReleased(0) then 
+					showConfigGUI = not showConfigGUI 
+				end 
+			end 
+			ImGui.Text("Config File: " .. (configFilePath or "None")) 
+			ImGui.Separator() 
+			ImGui.Text("Mode: " .. (isIniFile and "INI" or "LUA")) 
 			isIniFile =  ImGui.Checkbox("INI Mode", isIniFile)
 
 			drawFileSelector()
@@ -391,11 +412,11 @@ local function Draw_GUI()
 			if ImGui.Button("Save Config") then
 				showSaveFileSelector = true
 			end
-			if ImGui.BeginChild("ConfigEditor", ImVec2(0, sizeY - 30 ), bit32.bor(ImGuiChildFlags.Border)) then
-
+			searchFilter = ImGui.InputTextWithHint("##search", "Search...", searchFilter):lower()
+			if ImGui.BeginChild("ConfigEditor", ImVec2(0, sizeY - 60), bit32.bor(ImGuiChildFlags.Border)) then
 				ImGui.SeparatorText("Config File")
 				if configFilePath and configFilePath ~= "" then
-					childHeight = (sizeY - 30) * .5
+					childHeight = (sizeY - 60) * .5
 					drawConfigGUI()
 				end
 			ImGui.EndChild()
@@ -467,22 +488,22 @@ local function Draw_GUI()
 	end
 end
 
-local function Init()
-	loadSettings()
-	if File_Exists(themezDir) then
-		hasThemeZ = true
-	end
-	mq.imgui.init('ConfigEdit', Draw_GUI)
+local function Init() 
+	loadSettings() 
+	if File_Exists(themezDir) then 
+		hasThemeZ = true 
+	end 
+	mq.imgui.init('ConfigEdit', Draw_GUI) 
 end
 
-local function Loop()
-	while RUNNING do
-		RUNNING = showMainGUI
-		winFlags = locked and bit32.bor(ImGuiWindowFlags.NoMove) or bit32.bor(ImGuiWindowFlags.None)
-		winFlags = aSize and bit32.bor(winFlags, ImGuiWindowFlags.AlwaysAutoResize) or winFlags
-		mq.delay(100)
-	end
+local function Loop() 
+	while RUNNING do 
+		RUNNING = showMainGUI 
+		winFlags = locked and bit32.bor(ImGuiWindowFlags.NoMove) or bit32.bor(ImGuiWindowFlags.None) 
+		winFlags = aSize and bit32.bor(winFlags, ImGuiWindowFlags.AlwaysAutoResize) or winFlags 
+		mq.delay(100) 
+	end 
 end
 
-Init()
+Init() 
 Loop()
