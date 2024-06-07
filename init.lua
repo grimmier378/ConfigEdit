@@ -384,8 +384,12 @@ local function Draw_GUI()
 				end
 			end
 			ImGui.Text("Config File: " .. (configFilePath or "None"))
+			ImGui.Separator()
+			ImGui.Text("Mode: " .. (isIniFile and "INI" or "LUA"))
+			isIniFile =  ImGui.Checkbox("INI Mode", isIniFile)
+
 			drawFileSelector()
-			local sizeX,sizeY = ImGui.GetContentRegionAvail()
+			local sizeX, sizeY = ImGui.GetContentRegionAvail()
 			if ImGui.Button("Save Config") then
 				showSaveFileSelector = true
 			end
@@ -475,19 +479,11 @@ end
 local function Loop()
 	while RUNNING do
 		RUNNING = showMainGUI
-		if mq.TLO.EverQuest.GameState() ~= "INGAME" then 
-			printf("\aw[\at%s\ax] \arNot in game, \ayTry again later...", script) 
-			mq.exit() 
-		end
 		winFlags = locked and bit32.bor(ImGuiWindowFlags.NoMove) or bit32.bor(ImGuiWindowFlags.None)
 		winFlags = aSize and bit32.bor(winFlags, ImGuiWindowFlags.AlwaysAutoResize) or winFlags
-		mq.delay(1000)
+		mq.delay(100)
 	end
 end
 
-if mq.TLO.EverQuest.GameState() ~= "INGAME" then 
-	printf("\aw[\at%s\ax] \arNot in game, \ayTry again later...", script) 
-	mq.exit() 
-end
 Init()
 Loop()
