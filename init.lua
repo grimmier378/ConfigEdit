@@ -1,7 +1,7 @@
 --[[
 	Title: Config GUI Script
 	Author: Grimmier
-	Description: GUI for dynamically loading and editing Lua config files and INI files.
+	Description: GUI for dynamically loading and editing Lua config files.
 ]]
 
 -- Load Libraries
@@ -10,7 +10,7 @@ local ImGui = require('ImGui')
 local LoadTheme = require('lib.theme_loader')
 local Icon = require('mq.ICONS')
 local lfs = require('lfs')
-local LIP = require('lib.LIP') -- Include the LIP library
+local LIP = require('lib.lip')
 
 -- Variables
 local script = 'ConfigEditor' -- Change this to the name of your script
@@ -29,7 +29,7 @@ local saveConfigDirectory = mq.configDir
 local selectedFile = nil
 local inputBuffer = {}
 local childHeight = 300
-local isIniFile = false -- Track if the current file is an INI file
+local isIniFile = false
 
 -- GUI Settings
 local winFlags = bit32.bor(ImGuiWindowFlags.None)
@@ -108,15 +108,15 @@ local function loadSettings()
 end
 
 local function loadConfig()
-	if isIniFile then
-		configData = LIP.load(configFilePath)
-	else
-		if File_Exists(configFilePath) then
-			configData = dofile(configFilePath)
+	if File_Exists(configFilePath) then
+		if isIniFile then
+			configData = LIP.load(configFilePath)
 		else
-			configData = {}
-			mq.pickle(configFilePath, configData)
+			configData = dofile(configFilePath)
 		end
+	else
+		configData = {}
+		mq.pickle(configFilePath, configData)
 	end
 	inputBuffer = {} -- Clear the input buffer
 end
@@ -144,31 +144,30 @@ local function stringToValue(value, originalType)
 end
 
 local function saveConfig(savePath)
+	for key, value in pairs(inputBuffer) do
+		local keys = {}
+		for match in string.gmatch(key, "([^%.]+)") do
+			table.insert(keys, match)
+		end
+
+		local current = configData
+		for i = 1, #keys - 1 do
+			if current[keys[i]] == nil then
+				current[keys[i]] = {}
+			end
+			current = current[keys[i]]
+		end
+
+		if tonumber(keys[#keys]) then
+			current[tonumber(keys[#keys])] = stringToValue(value, type(current[tonumber(keys[#keys])]))
+		else
+			current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]]))
+		end
+	end
+
 	if isIniFile then
 		LIP.save(savePath, configData)
 	else
-		for key, value in pairs(inputBuffer) do
-			local keys = {}
-			for match in string.gmatch(key, "([^%.]+)") do
-				table.insert(keys, match)
-			end
-
-			local current = configData
-			for i = 1, #keys - 1 do
-				if current[keys[i]] == nil then
-					current[keys[i]] = {}
-				end
-				current = current[keys[i]]
-			end
-
-			if tonumber(keys[#keys]) then
-				-- If the key is a number, it's an index in an array
-				current[tonumber(keys[#keys])] = stringToValue(value, type(current[tonumber(keys[#keys])]))
-			else
-				current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]]))
-			end
-		end
-
 		mq.pickle(savePath, configData)
 	end
 	configFilePath = savePath
@@ -299,7 +298,7 @@ local function getDirectoryContents(path)
 			local attr = lfs.attributes(f)
 			if attr.mode == "directory" then
 				table.insert(folders, file)
-			elseif attr.mode == "file" and (file:match("%.lua$") or file:match("%.ini$")) then
+			elseif attr.mode == "file" and ((isIniFile and file:match("%.ini$")) or (not isIniFile and file:match("%.lua$"))) then
 				table.insert(files, file)
 			end
 		end
@@ -331,7 +330,6 @@ local function drawFileSelector()
 				selectedFile = file
 				configFilePath = currentDirectory .. '/' .. selectedFile
 				configData = {} -- Clear the previous config data
-				isIniFile = file:match("%.ini$")
 				loadConfig()
 			end
 		end
@@ -394,6 +392,7 @@ local function Draw_GUI()
 				showSaveFileSelector = true
 			end
 			if ImGui.BeginChild("ConfigEditor", ImVec2(0, sizeY - 30 ), bit32.bor(ImGuiChildFlags.Border)) then
+
 				ImGui.SeparatorText("Config File")
 				if configFilePath and configFilePath ~= "" then
 					childHeight = (sizeY - 30) * .5
