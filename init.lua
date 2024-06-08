@@ -485,7 +485,7 @@ end
 -- Function to draw multiline input box for CFG files
 local function drawDocumentEditor()
 	local cfgText = table.concat(configData, "\n")
-	local inputText = ImGui.InputTextMultiline("##cfgEditor", cfgText, -1, -1)
+	local inputText = ImGui.InputTextMultiline("##cfgEditor", cfgText, -1, -1 )
 	if inputText ~= cfgText then
 		configData = {}
 		for line in inputText:gmatch("[^\r\n]+") do
@@ -625,30 +625,36 @@ end
 			if showMain then 
 				if ImGui.BeginMenuBar() then 
 					if ImGui.BeginMenu("File") then 
-						if ImGui.MenuItem("Save") then 
-							showSaveFileSelector = true
+						if selectedFile ~= nil then
+							if ImGui.MenuItem("Save") then 
+								showSaveFileSelector = true
+							end
+							if ImGui.MenuItem("Create Backup") then 
+								createBackup = true
+								showSaveFileSelector = true
+							end
 						end
-						if ImGui.MenuItem("Create Backup") then 
-							createBackup = true
-							showSaveFileSelector = true
-						end
-						ImGui.SeparatorText("File Type")
-						if ImGui.MenuItem("CFG", nil, fileType == "Cfg") then
+						ImGui.SeparatorText("Open File Type")
+						if ImGui.MenuItem("Open file *.cfg", nil) then
+							showOpenFileSelector = false
 							fileType = "Cfg"
 							clearConfigData()
 							showOpenFileSelector = true
 						end
-						if ImGui.MenuItem("INI", nil, fileType == "Ini") then
+						if ImGui.MenuItem("Open File *.ini", nil) then
+							showOpenFileSelector = false
 							fileType = "Ini"
 							clearConfigData()
 							showOpenFileSelector = true
 						end
-						if ImGui.MenuItem("Lua", nil, fileType == "Lua") then
+						if ImGui.MenuItem("Open File *.lua", nil) then
+							showOpenFileSelector = false
 							fileType = "Lua"
 							clearConfigData()
 							showOpenFileSelector = true
 						end
-						if ImGui.MenuItem("Log", nil, fileType == "Log") then
+						if ImGui.MenuItem("Open File *.log", nil) then
+							showOpenFileSelector = false
 							fileType = "Log"
 							clearConfigData()
 							showOpenFileSelector = true
@@ -750,6 +756,7 @@ end
 		
 		if showSaveFileSelector then
 			if not showSaveFileSelector then return end
+			ImGui.SetNextWindowPos(500, 300, ImGuiCond.Appearing)
 			local winName = string.format('%s Save##Save', script)
 			local ColCntExp, StyCntExp = LoadTheme.StartTheme(theme.Theme[themeID])
 			local openSaveConfig, showSaveConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
@@ -766,6 +773,7 @@ end
 		if showOpenFileSelector then
 			if not showOpenFileSelector then return end
 			local winName = string.format('%s Open##Open', script)
+			ImGui.SetNextWindowPos(500, 300, ImGuiCond.Appearing)
 			local ColCntOpn, StyCntOpn = LoadTheme.StartTheme(theme.Theme[themeID])
 			local openOpenConfig, showOpenWin = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
 			if not openOpenConfig then
