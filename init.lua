@@ -8,8 +8,9 @@
 local mq = require('mq') 
 local ImGui = require('ImGui') 
 local LoadTheme = require('lib.theme_loader') 
-local Icon = require('mq.ICONS') 
-local lfs = require('lfs') 
+local Icon = require('mq.ICONS')
+local PackageMan = require('mq/PackageMan')
+local lfs = PackageMan.Require('luafilesystem', 'lfs')
 local LIP = require('lib.lip')
 
 -- Variables 
