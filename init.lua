@@ -611,180 +611,180 @@ local function drawSaveFileSelector()
 end
 
 -- Main function to draw the GUI
-	local function Draw_GUI() 
-		if showMainGUI then 
-			local winName = string.format('%s##Main2', script) 
-			local ColorCount, StyleCount = LoadTheme.StartTheme(theme.Theme[themeID]) 
-			local openMain, showMain = ImGui.Begin(winName, true, bit32.bor(winFlags, ImGuiWindowFlags.MenuBar)) 
-			if not openMain then 
-				showMainGUI = false 
-			end 
-			if showMain then 
-				if ImGui.BeginMenuBar() then 
-					if ImGui.BeginMenu("File") then 
-						if selectedFile ~= nil then
-							if ImGui.MenuItem("Save") then 
-								showSaveFileSelector = true
-							end
-							if ImGui.MenuItem("Create Backup") then 
-								createBackup = true
-								showSaveFileSelector = true
-							end
+local function Draw_GUI() 
+	if showMainGUI then 
+		local winName = string.format('%s##Main2', script) 
+		local ColorCount, StyleCount = LoadTheme.StartTheme(theme.Theme[themeID]) 
+		local openMain, showMain = ImGui.Begin(winName, true, bit32.bor(winFlags, ImGuiWindowFlags.MenuBar)) 
+		if not openMain then 
+			showMainGUI = false 
+		end 
+		if showMain then 
+			if ImGui.BeginMenuBar() then 
+				if ImGui.BeginMenu("File") then 
+					if selectedFile ~= nil then
+						if ImGui.MenuItem("Save") then 
+							showSaveFileSelector = true
 						end
-						ImGui.SeparatorText("Open File Type")
-						if ImGui.MenuItem("Open file *.cfg", nil) then
-							showOpenFileSelector = false
-							fileType = "Cfg"
-							clearConfigData()
-							showOpenFileSelector = true
+						if ImGui.MenuItem("Create Backup") then 
+							createBackup = true
+							showSaveFileSelector = true
 						end
-						if ImGui.MenuItem("Open File *.ini", nil) then
-							showOpenFileSelector = false
-							fileType = "Ini"
-							clearConfigData()
-							showOpenFileSelector = true
-						end
-						if ImGui.MenuItem("Open File *.lua", nil) then
-							showOpenFileSelector = false
-							fileType = "Lua"
-							clearConfigData()
-							showOpenFileSelector = true
-						end
-						if ImGui.MenuItem("Open File *.log", nil) then
-							showOpenFileSelector = false
-							fileType = "Log"
-							clearConfigData()
-							showOpenFileSelector = true
-						end
-						ImGui.Separator()
-						if ImGui.MenuItem("Exit") then 
-							showMainGUI = false 
-						end
-						ImGui.EndMenu()
 					end
-					if ImGui.BeginMenu("Options") then
-						if ImGui.MenuItem("Document View", nil, viewDocument) then
-							viewDocument = not viewDocument
-							if selectedFile then
-								loadConfig()
-							end
-						end
-						if ImGui.MenuItem("Window Settings") then 
-							showConfigGUI = true
-						end
-						ImGui.EndMenu()
+					ImGui.SeparatorText("Open File Type")
+					if ImGui.MenuItem("Open file *.cfg", nil) then
+						showOpenFileSelector = false
+						fileType = "Cfg"
+						clearConfigData()
+						showOpenFileSelector = true
 					end
-					ImGui.EndMenuBar() 
+					if ImGui.MenuItem("Open File *.ini", nil) then
+						showOpenFileSelector = false
+						fileType = "Ini"
+						clearConfigData()
+						showOpenFileSelector = true
+					end
+					if ImGui.MenuItem("Open File *.lua", nil) then
+						showOpenFileSelector = false
+						fileType = "Lua"
+						clearConfigData()
+						showOpenFileSelector = true
+					end
+					if ImGui.MenuItem("Open File *.log", nil) then
+						showOpenFileSelector = false
+						fileType = "Log"
+						clearConfigData()
+						showOpenFileSelector = true
+					end
+					ImGui.Separator()
+					if ImGui.MenuItem("Exit") then 
+						showMainGUI = false 
+					end
+					ImGui.EndMenu()
 				end
-				ImGui.SetWindowFontScale(scale) 
-	
-				ImGui.Text("Config File: " .. (configFilePath or "None")) 
-				ImGui.Separator() 
-				ImGui.Text("Mode: " .. fileType)
-				
-				-- local sizeX, sizeY = ImGui.GetContentRegionAvail()
-				-- sizeY = math.max(sizeY, 100) -- Ensure a minimum height to prevent issues
-				-- sizeX = math.max(sizeX, 100) -- Ensure a minimum width to prevent issues
-				if selectedFile then
-				searchFilter = ImGui.InputTextWithHint("##search", "Search...", searchFilter):lower()
-				if ImGui.BeginChild("ConfigEditor##"..script, ImVec2(0,0), bit32.bor(ImGuiChildFlags.Border)) then
-					ImGui.SeparatorText("Config File")
-					if configFilePath and configFilePath ~= "" then
-						-- childHeight = (sizeY - 60) * .5
-						drawConfigGUI()
+				if ImGui.BeginMenu("Options") then
+					if ImGui.MenuItem("Document View", nil, viewDocument) then
+						viewDocument = not viewDocument
+						if selectedFile then
+							loadConfig()
+						end
 					end
-					-- ImGui.EndChild()
+					if ImGui.MenuItem("Window Settings") then 
+						showConfigGUI = true
+					end
+					ImGui.EndMenu()
 				end
-				ImGui.EndChild()
+				ImGui.EndMenuBar() 
 			end
-				ImGui.SetWindowFontScale(1)
+			ImGui.SetWindowFontScale(scale) 
+
+			ImGui.Text("Config File: " .. (configFilePath or "None")) 
+			ImGui.Separator() 
+			ImGui.Text("Mode: " .. fileType)
+			
+			-- local sizeX, sizeY = ImGui.GetContentRegionAvail()
+			-- sizeY = math.max(sizeY, 100) -- Ensure a minimum height to prevent issues
+			-- sizeX = math.max(sizeX, 100) -- Ensure a minimum width to prevent issues
+			if selectedFile then
+			searchFilter = ImGui.InputTextWithHint("##search", "Search...", searchFilter):lower()
+			if ImGui.BeginChild("ConfigEditor##"..script, ImVec2(0,0), bit32.bor(ImGuiChildFlags.Border)) then
+				ImGui.SeparatorText("Config File")
+				if configFilePath and configFilePath ~= "" then
+					-- childHeight = (sizeY - 60) * .5
+					drawConfigGUI()
+				end
+				-- ImGui.EndChild()
 			end
-			LoadTheme.EndTheme(ColorCount, StyleCount)
-			ImGui.End()
+			ImGui.EndChild()
 		end
-	
-		if showConfigGUI then
-			local winName = string.format('%s Config##Config', script)
-			local ColCntConf, StyCntConf = LoadTheme.StartTheme(theme.Theme[themeID])
-			local openConfig, showConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
-			if not openConfig then
+			ImGui.SetWindowFontScale(1)
+		end
+		LoadTheme.EndTheme(ColorCount, StyleCount)
+		ImGui.End()
+	end
+
+	if showConfigGUI then
+		local winName = string.format('%s Config##Config', script)
+		local ColCntConf, StyCntConf = LoadTheme.StartTheme(theme.Theme[themeID])
+		local openConfig, showConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
+		if not openConfig then
+			showConfigGUI = false
+		end
+		if showConfig then
+			ImGui.SeparatorText("Config Editor Settings")
+			ImGui.SeparatorText("Theme##"..script)
+			ImGui.Text("Cur Theme: %s", themeName)
+			if ImGui.BeginCombo("Load Theme##"..script, themeName) then
+				for k, data in pairs(theme.Theme) do
+					local isSelected = data.Name == themeName
+					if ImGui.Selectable(data.Name, isSelected) then
+						theme.LoadTheme = data.Name
+						themeID = k
+						themeName = theme.LoadTheme
+					end
+				end
+				ImGui.EndCombo()
+			end
+			scale = ImGui.SliderFloat("Scale##"..script, scale, 0.5, 2)
+			if scale ~= settings[script].Scale then
+				if scale < 0.5 then scale = 0.5 end
+				if scale > 2 then scale = 2 end
+			end
+			if hasThemeZ then
+				if ImGui.Button('Edit ThemeZ') then
+					mq.cmd("/lua run themez")
+				end
+				ImGui.SameLine()
+			end
+			if ImGui.Button('Reload Theme File') then
+				loadTheme()
+			end
+			if ImGui.Button("Save & Close") then
+				settings = dofile(defaultConfigFile)
+				settings[script].Scale = scale
+				settings[script].LoadTheme = themeName
+				mq.pickle(defaultConfigFile, settings)
 				showConfigGUI = false
 			end
-			if showConfig then
-				ImGui.SeparatorText("Config Editor Settings")
-				ImGui.SeparatorText("Theme##"..script)
-				ImGui.Text("Cur Theme: %s", themeName)
-				if ImGui.BeginCombo("Load Theme##"..script, themeName) then
-					for k, data in pairs(theme.Theme) do
-						local isSelected = data.Name == themeName
-						if ImGui.Selectable(data.Name, isSelected) then
-							theme.LoadTheme = data.Name
-							themeID = k
-							themeName = theme.LoadTheme
-						end
-					end
-					ImGui.EndCombo()
-				end
-				scale = ImGui.SliderFloat("Scale##"..script, scale, 0.5, 2)
-				if scale ~= settings[script].Scale then
-					if scale < 0.5 then scale = 0.5 end
-					if scale > 2 then scale = 2 end
-				end
-				if hasThemeZ then
-					if ImGui.Button('Edit ThemeZ') then
-						mq.cmd("/lua run themez")
-					end
-					ImGui.SameLine()
-				end
-				if ImGui.Button('Reload Theme File') then
-					loadTheme()
-				end
-				if ImGui.Button("Save & Close") then
-					settings = dofile(defaultConfigFile)
-					settings[script].Scale = scale
-					settings[script].LoadTheme = themeName
-					mq.pickle(defaultConfigFile, settings)
-					showConfigGUI = false
-				end
-			end
-			LoadTheme.EndTheme(ColCntConf, StyCntConf)
-			ImGui.End()
 		end
-		
-		if showSaveFileSelector then
-			if not showSaveFileSelector then return end
-			ImGui.SetNextWindowPos(500, 300, ImGuiCond.Appearing)
-			local winName = string.format('%s Save##Save', script)
-			local ColCntExp, StyCntExp = LoadTheme.StartTheme(theme.Theme[themeID])
-			local openSaveConfig, showSaveConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
-			if not openSaveConfig then
-				showSaveFileSelector = false
-			end
-			if showSaveConfig then
-				drawSaveFileSelector()
-			end
-			LoadTheme.EndTheme(ColCntExp, StyCntExp)
-			ImGui.End()
-		end
-	
-		if showOpenFileSelector then
-			if not showOpenFileSelector then return end
-			local winName = string.format('%s Open##Open', script)
-			ImGui.SetNextWindowPos(500, 300, ImGuiCond.Appearing)
-			local ColCntOpn, StyCntOpn = LoadTheme.StartTheme(theme.Theme[themeID])
-			local openOpenConfig, showOpenWin = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
-			if not openOpenConfig then
-				showOpenFileSelector = false
-			end
-			if showOpenWin then
-				if ImGui.Button("Cancel") then showOpenFileSelector = false end
-				drawFileSelector()
-	
-			end
-			LoadTheme.EndTheme(ColCntOpn, StyCntOpn)
-			ImGui.End()
-		end
+		LoadTheme.EndTheme(ColCntConf, StyCntConf)
+		ImGui.End()
 	end
+	
+	if showSaveFileSelector then
+		if not showSaveFileSelector then return end
+		ImGui.SetNextWindowPos(500, 300, ImGuiCond.Appearing)
+		local winName = string.format('%s Save##Save', script)
+		local ColCntExp, StyCntExp = LoadTheme.StartTheme(theme.Theme[themeID])
+		local openSaveConfig, showSaveConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
+		if not openSaveConfig then
+			showSaveFileSelector = false
+		end
+		if showSaveConfig then
+			drawSaveFileSelector()
+		end
+		LoadTheme.EndTheme(ColCntExp, StyCntExp)
+		ImGui.End()
+	end
+
+	if showOpenFileSelector then
+		if not showOpenFileSelector then return end
+		local winName = string.format('%s Open##Open', script)
+		ImGui.SetNextWindowPos(500, 300, ImGuiCond.Appearing)
+		local ColCntOpn, StyCntOpn = LoadTheme.StartTheme(theme.Theme[themeID])
+		local openOpenConfig, showOpenWin = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
+		if not openOpenConfig then
+			showOpenFileSelector = false
+		end
+		if showOpenWin then
+			if ImGui.Button("Cancel") then showOpenFileSelector = false end
+			drawFileSelector()
+
+		end
+		LoadTheme.EndTheme(ColCntOpn, StyCntOpn)
+		ImGui.End()
+	end
+end
 
 -- Function to initialize the script
 local function Init() 
