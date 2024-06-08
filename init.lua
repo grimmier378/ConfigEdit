@@ -758,6 +758,10 @@ local function Draw_GUI()
 		local winName = string.format('%s Save##Save', script)
 		local ColCntExp, StyCntExp = LoadTheme.StartTheme(theme.Theme[themeID])
 		local openSaveConfig, showSaveConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
+		
+		-- Focus the window to keep it on top
+		ImGui.SetWindowFocus(winName)
+
 		if not openSaveConfig then
 			showSaveFileSelector = false
 		end
@@ -774,13 +778,16 @@ local function Draw_GUI()
 		ImGui.SetNextWindowPos(500, 300, ImGuiCond.Appearing)
 		local ColCntOpn, StyCntOpn = LoadTheme.StartTheme(theme.Theme[themeID])
 		local openOpenConfig, showOpenWin = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
+		
+		-- Focus the window to keep it on top
+		ImGui.SetWindowFocus(winName)
+	
 		if not openOpenConfig then
 			showOpenFileSelector = false
 		end
 		if showOpenWin then
 			if ImGui.Button("Cancel") then showOpenFileSelector = false end
 			drawFileSelector()
-
 		end
 		LoadTheme.EndTheme(ColCntOpn, StyCntOpn)
 		ImGui.End()
