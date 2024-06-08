@@ -147,7 +147,27 @@ local function loadConfig()
 				table.insert(configData, line)
 			end
 		else 
-			configData = dofile(configFilePath) 
+			-- Attempt to load the Lua config file with pcall
+			local success, result = pcall(dofile, configFilePath)
+			if success then
+				if type(result) == "table" then
+					configData = result
+				else
+					-- If the result is not a table, switch to document mode and load as text
+					viewDocument = true
+					configData = {}
+					for line in io.lines(configFilePath) do
+						table.insert(configData, line)
+					end
+				end
+			else
+				-- If loading fails, switch to document mode and load as text
+				viewDocument = true
+				configData = {}
+				for line in io.lines(configFilePath) do
+					table.insert(configData, line)
+				end
+			end
 		end 
 	else 
 		configData = {} 
@@ -155,6 +175,7 @@ local function loadConfig()
 	end 
 	inputBuffer = {} -- Clear the input buffer 
 end
+
 
 -- Function to convert value to string
 local function valueToString(value) 
@@ -464,7 +485,7 @@ end
 -- Function to draw multiline input box for CFG files
 local function drawDocumentEditor()
 	local cfgText = table.concat(configData, "\n")
-	local inputText = ImGui.InputTextMultiline("##cfgEditor", cfgText, -1, 0.0)
+	local inputText = ImGui.InputTextMultiline("##cfgEditor", cfgText, -1, -1)
 	if inputText ~= cfgText then
 		configData = {}
 		for line in inputText:gmatch("[^\r\n]+") do
