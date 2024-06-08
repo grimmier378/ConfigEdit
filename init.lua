@@ -1,7 +1,7 @@
 --[[ 
 	Title: Config GUI Script 
 	Author: Grimmier 
-	Description: GUI for dynamically loading and editing Lua config files. 
+	Description: GUI for dynamically loading and editing Lua, INI, and CFG config files. 
 ]]
 
 -- Load Libraries 
@@ -19,22 +19,24 @@ local gIcon = Icon.MD_SETTINGS -- Gear Icon for Settings
 local themeID = 1 
 local theme, defaults, settings = {}, {}, {} 
 local RUNNING = true 
-local showMainGUI, showConfigGUI, showSaveFileSelector = true, false, false 
+local showMainGUI, showConfigGUI, showSaveFileSelector, showOpenFileSelector = true, false, false, false
 local scale = 1 
 local aSize, locked, hasThemeZ = false, false, false 
 local configData = {} 
-local configFilePath = string.format('%s/', mq.configDir) -- Default config folder path prefix 
-local currentDirectory = mq.configDir 
-local saveConfigDirectory = mq.configDir 
+local configFilePath = string.format('%s/', mq.TLO.MacroQuest.Path()) -- Default config folder path prefix 
+local currentDirectory = mq.TLO.MacroQuest.Path() 
+local saveConfigDirectory = mq.TLO.MacroQuest.Path() 
 local selectedFile = nil 
 local inputBuffer = {} 
 local childHeight = 300 
-local isIniFile = false 
+local fileType = "Lua" -- Options: "Lua", "Ini", "Cfg"
 local searchFilter = ""
+local createBackup = false
+local viewDocument = false -- Toggle for document view mode
 
 -- GUI Settings 
 local winFlags = bit32.bor(ImGuiWindowFlags.None)
-
+local getSortedPairs
 -- File Paths 
 local themeFile = string.format('%s/MyUI/MyThemeZ.lua', mq.configDir) 
 local defaultConfigFile = string.format('%s/MyUI/%s/%s_Configs.lua', mq.configDir, script, script) 
@@ -108,10 +110,38 @@ local function loadSettings()
 	if newSetting then mq.pickle(defaultConfigFile, settings) end 
 end
 
+-- Function to restructure INI data into a format suitable for GUI display
+local function restructureIniData(data)
+	local flatData = {}
+	for section, values in pairs(data) do
+		if type(values) == "table" then
+			flatData[section] = {}
+			for key, value in pairs(values) do
+				table.insert(flatData[section], { key = key, value = value })
+			end
+		else
+			table.insert(flatData, { section = "", key = section, value = values })
+		end
+	end
+	return flatData
+end
+
+-- Function to clear configuration data and input buffers
+local function clearConfigData()
+	configData = {}
+	inputBuffer = {}
+end
+
+-- Load configuration data based on file type
 local function loadConfig() 
 	if File_Exists(configFilePath) then 
-		if isIniFile then 
-			configData = LIP.load(configFilePath) 
+		if fileType == "Ini" and not viewDocument then 
+			configData = restructureIniData(LIP.load(configFilePath)) 
+		elseif fileType == "Cfg" or fileType == "Log" or viewDocument then
+			configData = {}
+			for line in io.lines(configFilePath) do
+				table.insert(configData, line)
+			end
 		else 
 			configData = dofile(configFilePath) 
 		end 
@@ -127,13 +157,17 @@ local function valueToString(value)
 		return "function() return true end" 
 	elseif type(value) == "table" then 
 		return "Table" 
+	elseif value == nil then 
+		return "nil"
 	else 
 		return tostring(value) 
 	end 
 end
 
 local function stringToValue(value, originalType) 
-	if originalType == "number" then 
+	if value == "nil" then
+		return nil
+	elseif originalType == "number" then 
 		return tonumber(value) 
 	elseif originalType == "boolean" then 
 		return value == "true" 
@@ -144,31 +178,50 @@ local function stringToValue(value, originalType)
 	end 
 end
 
+-- Save configuration data based on file type
 local function saveConfig(savePath) 
-	for key, value in pairs(inputBuffer) do 
-		local keys = {} 
-		for match in string.gmatch(key, "([^%.]+)") do 
-			table.insert(keys, match) 
+	if viewDocument then
+		local f = io.open(savePath, "w")
+		for _, line in ipairs(configData) do
+			f:write(line .. "\n")
 		end
-
-		local current = configData 
-		for i = 1, #keys - 1 do 
-			if current[keys[i]] == nil then 
-				current[keys[i]] = {} 
-			end 
-			current = current[keys[i]] 
+		f:close()
+	elseif fileType == "Ini" then 
+		local iniData = {}
+		for section, entries in pairs(configData) do
+			iniData[section] = {}
+			for _, entry in ipairs(entries) do
+				iniData[section][entry.key] = entry.value
+			end
 		end
-
-		if tonumber(keys[#keys]) then 
-			current[tonumber(keys[#keys])] = stringToValue(value, type(current[tonumber(keys[#keys])])) 
-		else 
-			current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]])) 
-		end 
-	end
-
-	if isIniFile then 
-		LIP.save(savePath, configData) 
+		LIP.save(savePath, iniData)
+	elseif fileType == "Cfg" or fileType == "Log" then
+		local f = io.open(savePath, "w")
+		for _, line in ipairs(configData) do
+			f:write(line .. "\n")
+		end
+		f:close()
 	else 
+		for key, value in pairs(inputBuffer) do 
+			local keys = {} 
+			for match in string.gmatch(key, "([^%.]+)") do 
+				table.insert(keys, match) 
+			end
+
+			local current = configData 
+			for i = 1, #keys - 1 do 
+				if current[keys[i]] == nil then 
+					current[keys[i]] = {} 
+				end 
+				current = current[keys[i]] 
+			end
+
+			if tonumber(keys[#keys]) then 
+				current[tonumber(keys[#keys])] = stringToValue(value, type(current[tonumber(keys[#keys])])) 
+			else 
+				current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]])) 
+			end 
+		end
 		mq.pickle(savePath, configData) 
 	end 
 	configFilePath = savePath 
@@ -195,10 +248,82 @@ local function matchesFilter(key, value)
 	return false
 end
 
-local function drawKeyValueSection(section, data, baseKey) 
+-- Function to get sorted pairs
+function getSortedPairs(t)
+	local sortedKeys = {}
+	if t == nil then
+		return function () end
+	end
+	for k in pairs(t) do
+		table.insert(sortedKeys, k)
+	end
+	table.sort(sortedKeys)
+
+	local i = 0
+	local iter = function ()
+		i = i + 1
+		if sortedKeys[i] == nil then
+			return nil
+		else
+			return sortedKeys[i], t[sortedKeys[i]]
+		end
+	end
+
+	return iter
+end
+
+-- Draw key-value pairs for INI files
+local function drawIniKeyValueSection(section, data, baseKey, depth)
+	local i = 1
+	while i <= #data do
+		local entry = data[i]
+		ImGui.Indent(depth * 10)
+		local valueStr = valueToString(entry.value)
+		local inputIdKey = baseKey .. section .. "_" .. i .. "_key"
+		local inputIdValue = baseKey .. section .. "_" .. i .. "_value"
+
+		if inputBuffer[inputIdKey] == nil then
+			inputBuffer[inputIdKey] = entry.key
+		end
+		if inputBuffer[inputIdValue] == nil then
+			inputBuffer[inputIdValue] = valueStr
+		end
+        
+		ImGui.SetNextItemWidth(200)
+		inputBuffer[inputIdKey] = ImGui.InputText("##" .. inputIdKey, inputBuffer[inputIdKey])
+		ImGui.SameLine()
+		ImGui.Text(" = ")
+		ImGui.SameLine()
+		ImGui.SetNextItemWidth(200)
+		inputBuffer[inputIdValue] = ImGui.InputText("##" .. inputIdValue, inputBuffer[inputIdValue])
+		ImGui.SameLine()
+
+		if ImGui.Button(Icon.MD_DELETE .. "##" .. inputIdKey) then
+			table.remove(data, i)
+			inputBuffer[inputIdKey] = nil
+			inputBuffer[inputIdValue] = nil
+		else
+			entry.key = inputBuffer[inputIdKey]
+			entry.value = stringToValue(inputBuffer[inputIdValue], type(entry.value))
+			i = i + 1
+		end
+
+		ImGui.Unindent(depth * 10)
+	end
+
+	if ImGui.Button("Add Row##" .. section) then
+		table.insert(data, { key = "NewKey", value = "NewValue" })
+		local newIndex = #data
+		inputBuffer[baseKey .. section .. "_" .. newIndex .. "_key"] = "NewKey"
+		inputBuffer[baseKey .. section .. "_" .. newIndex .. "_value"] = "NewValue"
+	end
+end
+
+-- Draw key-value pairs for Lua files
+local function drawLuaKeyValueSection(section, data, baseKey, depth) 
 	for key, value in pairs(data) do 
 		if type(value) == "table" then 
-			drawSection(key, value, baseKey) 
+			drawLuaSection(key, value, baseKey) 
 		else 
 			ImGui.Text(key) 
 			ImGui.SameLine() 
@@ -217,7 +342,14 @@ local function drawKeyValueSection(section, data, baseKey)
 	end 
 end
 
-local function drawTableSection(section, data, baseKey) 
+local function drawIniNestedSection(data, baseKey, depth)
+	for section, entries in pairs(data) do
+		drawIniSection(section, entries, baseKey, depth + 1)
+		ImGui.Dummy(10, 20)
+	end
+end
+
+local function drawLuaTableSection(section, data, baseKey) 
 	ImGui.Columns(3, "table_columns", true) 
 	for i = 1, #data do 
 		ImGui.Text(tostring(i)) 
@@ -252,17 +384,33 @@ local function drawTableSection(section, data, baseKey)
 	end 
 end
 
-local function drawNestedSection(data, baseKey) 
-	for key, value in pairs(data) do 
+local function drawLuaNestedSection(data, baseKey, depth)
+	for key, value in getSortedPairs(data) do 
 		if type(value) == "table" then 
-			drawSection(key, value, baseKey) 
+			drawLuaSection(key, value, baseKey) 
 		else 
-			drawKeyValueSection(key, { [key] = value }, baseKey) 
+			drawLuaKeyValueSection(key, { [key] = value }, baseKey) 
 		end 
 	end 
 end
 
-function drawSection(section, data, baseKey) 
+function drawIniSection(section, data, baseKey, depth)
+	if type(section) ~= "string" then
+		section = tostring(section)
+	end
+	local fullKey = baseKey .. section .. "."
+	if searchFilter == "" or matchesFilter(section, data) then
+		ImGui.Indent(depth * 10)
+		if ImGui.CollapsingHeader(section .. "##" .. fullKey) then
+			ImGui.Separator()
+			drawIniKeyValueSection(section, data, baseKey, depth + 1)
+			ImGui.Separator()
+		end
+		ImGui.Unindent(depth * 10)
+	end
+end
+
+function drawLuaSection(section, data, baseKey, depth)
 	if type(section) ~= "string" then 
 		section = tostring(section) 
 	end 
@@ -270,47 +418,75 @@ function drawSection(section, data, baseKey)
 	if searchFilter == "" or matchesFilter(section, data) then
 		if ImGui.CollapsingHeader(section) then 
 			ImGui.Separator() 
-			ImGui.BeginChild("Child_"..section, ImVec2(0, childHeight), bit32.bor(ImGuiChildFlags.Border)) 
+			-- ImGui.BeginChild("Child_"..section, ImVec2(0, childHeight), bit32.bor(ImGuiChildFlags.Border)) 
 			if type(data) == "table" then 
 				if next(data) ~= nil and type(next(data)) == "number" and type(data[next(data)]) ~= "table" then 
-					drawTableSection(section, data, fullKey) 
+					drawLuaTableSection(section, data, fullKey) 
+					ImGui.Dummy(10, 20)
 				else 
-					drawNestedSection(data, fullKey) 
+					drawLuaNestedSection(data, fullKey) 
+					ImGui.Dummy(10, 20)
 				end 
 			end 
-			ImGui.EndChild() 
+			-- ImGui.EndChild() 
+			ImGui.Dummy(10, 20)
 			ImGui.Separator() 
 		end 
 	end
 end
 
 local function drawGeneralSection(data, baseKey)
-	if searchFilter == "" or matchesFilter("General", data) then
-		if ImGui.CollapsingHeader("General") then
+	if searchFilter == "" or matchesFilter("Generic", data) then
+		if ImGui.CollapsingHeader("Generic") then
 			ImGui.Separator()
-			ImGui.BeginChild("Child_General", ImVec2(0, childHeight - 30), bit32.bor(ImGuiChildFlags.Border))
-			drawKeyValueSection("General", data, baseKey)
-			ImGui.EndChild()
+			-- ImGui.BeginChild("Child_General", ImVec2(0, childHeight - 30), bit32.bor(ImGuiChildFlags.Border))
+			drawLuaKeyValueSection("Generic", data, baseKey)
+			-- ImGui.EndChild()
+			ImGui.Dummy(10, 20)
 			ImGui.Separator()
 		end
 	end
 end
 
+-- Draw multiline input box for CFG files
+local function drawDocumentEditor()
+	local cfgText = table.concat(configData, "\n")
+	local inputText = ImGui.InputTextMultiline("##cfgEditor", cfgText, -1, ImGui.GetContentRegionAvail())
+	if inputText ~= cfgText then
+		configData = {}
+		for line in inputText:gmatch("[^\r\n]+") do
+			table.insert(configData, line)
+		end
+	end
+end
+
 local function drawConfigGUI() 
-	local generalData = {} 
-	ImGui.Separator() 
-	for key, value in pairs(configData) do 
-		if type(value) == "function" then 
-			generalData[key] = tostring(value) 
-		elseif type(value) == "table" then 
-			drawSection(key, value, "") 
-		else 
-			generalData[key] = value 
-		end 
-	end 
-	if next(generalData) ~= nil then 
-		drawGeneralSection(generalData, "") 
-	end 
+	if viewDocument then
+		drawDocumentEditor()
+	else
+		if fileType == "Ini" then
+			for section, entries in getSortedPairs(configData) do
+				drawIniSection(section, entries, "", 0)
+			end
+		elseif fileType == "Cfg" or fileType == "Log" then
+			drawDocumentEditor()
+		else
+			local generalData = {} 
+			ImGui.Separator() 
+			for key, value in getSortedPairs(configData) do 
+				if type(value) == "function" then 
+					generalData[key] = tostring(value) 
+				elseif type(value) == "table" then 
+					drawLuaSection(key, value, "") 
+				else 
+					generalData[key] = value 
+				end 
+			end 
+			if next(generalData) ~= nil then 
+				drawGeneralSection(generalData, "") 
+			end 
+		end
+	end
 end
 
 local function getDirectoryContents(path) 
@@ -322,7 +498,7 @@ local function getDirectoryContents(path)
 			local attr = lfs.attributes(f) 
 			if attr.mode == "directory" then 
 				table.insert(folders, file) 
-			elseif attr.mode == "file" and ((isIniFile and file:match("%.ini$")) or (not isIniFile and file:match("%.lua$"))) then 
+			elseif attr.mode == "file" and ((fileType == "Ini" and file:match("%.ini$")) or (fileType == "Cfg" and file:match("%.cfg$")) or (fileType == "Log" and file:match("%.log$")) or (fileType == "Lua" and file:match("%.lua$"))) then 
 				table.insert(files, file) 
 			end 
 		end 
@@ -331,11 +507,15 @@ local function getDirectoryContents(path)
 end
 
 local function drawFileSelector() 
+
 	local folders, files = getDirectoryContents(currentDirectory) 
-	if currentDirectory ~= mq.configDir and ImGui.Button("Back") then 
-		currentDirectory = currentDirectory:match("(.*)/[^/]+$") 
+	if currentDirectory ~= mq.TLO.MacroQuest.Path() then
+		if ImGui.Button("Back") then 
+			currentDirectory = currentDirectory:match("(.*)/[^/]+$") 
+		end
+		ImGui.SameLine()
 	end 
-	local tmpFolder = currentDirectory:gsub(mq.configDir.."/", "") 
+	local tmpFolder = currentDirectory:gsub(mq.TLO.MacroQuest.Path().."/", "") 
 	ImGui.SetNextItemWidth(180) 
 	if ImGui.BeginCombo("Folders", tmpFolder) then 
 		for _, folder in ipairs(folders) do 
@@ -345,6 +525,7 @@ local function drawFileSelector()
 		end 
 		ImGui.EndCombo() 
 	end 
+
 	local tmpfile = configFilePath:gsub(currentDirectory.."/", "") 
 	ImGui.SetNextItemWidth(180) 
 	if ImGui.BeginCombo("Files", tmpfile or "Select a file") then 
@@ -352,21 +533,24 @@ local function drawFileSelector()
 			if ImGui.Selectable(file) then 
 				selectedFile = file 
 				configFilePath = currentDirectory .. '/' .. selectedFile 
-				configData = {} -- Clear the previous config data 
+				clearConfigData() -- Clear the previous config data and input buffer
 				loadConfig() 
+				showOpenFileSelector = false
 			end 
 		end 
 		ImGui.EndCombo() 
 	end 
+	
 end
+
 
 local function drawSaveFileSelector() 
 	local folders = getDirectoryContents(saveConfigDirectory) 
 	ImGui.Text("Save Directory: " .. saveConfigDirectory) 
-	if saveConfigDirectory ~= mq.configDir and ImGui.Button("Back") then 
+	if saveConfigDirectory ~= mq.TLO.MacroQuest.Path() and ImGui.Button("Back") then 
 		saveConfigDirectory = saveConfigDirectory:match("(.*)/[^/]+$") 
-	end 
-	local tmpFolder = saveConfigDirectory:gsub(mq.configDir.."/", "") 
+	end
+	local tmpFolder = saveConfigDirectory:gsub(mq.TLO.MacroQuest.Path().."/", "") 
 	ImGui.SetNextItemWidth(120) 
 	if ImGui.BeginCombo("Folders", tmpFolder or "Select a folder") then 
 		for _, folder in ipairs(folders) do 
@@ -376,12 +560,19 @@ local function drawSaveFileSelector()
 		end 
 		ImGui.EndCombo() 
 	end
-	if ImGui.Button("Save") then 
-		local savePath = saveConfigDirectory .. '/' .. selectedFile 
-		saveConfig(savePath) 
-		configFilePath = savePath 
-		loadConfig() 
-		showSaveFileSelector = false 
+	if ImGui.Button("Save") then
+		if selectedFile ~= nil then
+			local savePath = saveConfigDirectory .. '/' .. selectedFile
+			if createBackup then
+				savePath = saveConfigDirectory .. '/' .. selectedFile:gsub("%.", "_backup%.") 
+			else
+				savePath = saveConfigDirectory .. '/' .. selectedFile 
+			end
+			saveConfig(savePath) 
+			configFilePath = savePath 
+			loadConfig() 
+			showSaveFileSelector = false 
+		end
 	end 
 end
 
@@ -389,29 +580,68 @@ local function Draw_GUI()
 	if showMainGUI then 
 		local winName = string.format('%s##Main', script) 
 		local ColorCount, StyleCount = LoadTheme.StartTheme(theme.Theme[themeID]) 
-		local openMain, showMain = ImGui.Begin(winName, true, winFlags) 
+		local openMain, showMain = ImGui.Begin(winName, true, bit32.bor(winFlags, ImGuiWindowFlags.MenuBar)) 
 		if not openMain then 
 			showMainGUI = false 
 		end 
 		if showMain then 
+			if ImGui.BeginMenuBar() then 
+				if ImGui.BeginMenu("File") then 
+					if ImGui.MenuItem("Save") then 
+						showSaveFileSelector = true
+					end
+					if ImGui.MenuItem("Create Backup") then 
+						createBackup = true
+						showSaveFileSelector = true
+					end
+					ImGui.SeparatorText("File Type")
+					if ImGui.MenuItem("CFG", nil, fileType == "Cfg") then
+						fileType = "Cfg"
+						clearConfigData()
+						showOpenFileSelector = true
+					end
+					if ImGui.MenuItem("INI", nil, fileType == "Ini") then
+						fileType = "Ini"
+						clearConfigData()
+						showOpenFileSelector = true
+					end
+					if ImGui.MenuItem("Lua", nil, fileType == "Lua") then
+						fileType = "Lua"
+						clearConfigData()
+						showOpenFileSelector = true
+					end
+					if ImGui.MenuItem("Log", nil, fileType == "Log") then
+						fileType = "Log"
+						clearConfigData()
+						showOpenFileSelector = true
+					end
+					ImGui.Separator()
+					if ImGui.MenuItem("Exit") then 
+						showMainGUI = false 
+					end
+					ImGui.EndMenu()
+				end
+				if ImGui.BeginMenu("Options") then
+					if ImGui.MenuItem("Document View", nil, viewDocument) then
+						viewDocument = not viewDocument
+						if selectedFile then
+							loadConfig()
+						end
+					end
+					if ImGui.MenuItem("Window Settings") then 
+						showConfigGUI = true
+					end
+					ImGui.EndMenu()
+				end
+				ImGui.EndMenuBar() 
+			end
 			ImGui.SetWindowFontScale(scale) 
-			ImGui.Text(gIcon) 
-			if ImGui.IsItemHovered() then 
-				ImGui.SetTooltip("Settings") 
-				if ImGui.IsMouseReleased(0) then 
-					showConfigGUI = not showConfigGUI 
-				end 
-			end 
+
 			ImGui.Text("Config File: " .. (configFilePath or "None")) 
 			ImGui.Separator() 
-			ImGui.Text("Mode: " .. (isIniFile and "INI" or "LUA")) 
-			isIniFile =  ImGui.Checkbox("INI Mode", isIniFile)
-
-			drawFileSelector()
+			ImGui.Text("Mode: " .. fileType)
+            
 			local sizeX, sizeY = ImGui.GetContentRegionAvail()
-			if ImGui.Button("Save Config") then
-				showSaveFileSelector = true
-			end
 			searchFilter = ImGui.InputTextWithHint("##search", "Search...", searchFilter):lower()
 			if ImGui.BeginChild("ConfigEditor", ImVec2(0, sizeY - 60), bit32.bor(ImGuiChildFlags.Border)) then
 				ImGui.SeparatorText("Config File")
@@ -426,6 +656,7 @@ local function Draw_GUI()
 		LoadTheme.EndTheme(ColorCount, StyleCount)
 		ImGui.End()
 	end
+
 	if showConfigGUI then
 		local winName = string.format('%s Config##Config', script)
 		local ColCntConf, StyCntConf = LoadTheme.StartTheme(theme.Theme[themeID])
@@ -473,7 +704,9 @@ local function Draw_GUI()
 		LoadTheme.EndTheme(ColCntConf, StyCntConf)
 		ImGui.End()
 	end
+	
 	if showSaveFileSelector then
+		if not showSaveFileSelector then return end
 		local winName = string.format('%s Save##Save', script)
 		local ColCntExp, StyCntExp = LoadTheme.StartTheme(theme.Theme[themeID])
 		local openSaveConfig, showSaveConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
@@ -484,6 +717,23 @@ local function Draw_GUI()
 			drawSaveFileSelector()
 		end
 		LoadTheme.EndTheme(ColCntExp, StyCntExp)
+		ImGui.End()
+	end
+
+	if showOpenFileSelector then
+		if not showOpenFileSelector then return end
+		local winName = string.format('%s Open##Open', script)
+		local ColCntOpn, StyCntOpn = LoadTheme.StartTheme(theme.Theme[themeID])
+		local openOpenConfig, showOpenWin = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
+		if not openOpenConfig then
+			showOpenFileSelector = false
+		end
+		if showOpenWin then
+			if ImGui.Button("Cancel") then showOpenFileSelector = false end
+			drawFileSelector()
+
+		end
+		LoadTheme.EndTheme(ColCntOpn, StyCntOpn)
 		ImGui.End()
 	end
 end
