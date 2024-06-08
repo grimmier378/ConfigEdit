@@ -15,7 +15,6 @@ local LIP = require('lib.lip')
 -- Variables 
 local script = 'ConfigEditor' -- Change this to the name of your script 
 local themeName = 'Default' 
-local gIcon = Icon.MD_SETTINGS -- Gear Icon for Settings 
 local themeID = 1 
 local theme, defaults, settings = {}, {}, {} 
 local RUNNING = true 
@@ -28,7 +27,6 @@ local currentDirectory = mq.TLO.MacroQuest.Path()
 local saveConfigDirectory = mq.TLO.MacroQuest.Path() 
 local selectedFile = nil 
 local inputBuffer = {} 
-local childHeight = 300 
 local fileType = "Lua" -- Options: "Lua", "Ini", "Cfg"
 local searchFilter = ""
 local createBackup = false
@@ -175,7 +173,6 @@ local function loadConfig()
 	end 
 	inputBuffer = {} -- Clear the input buffer 
 end
-
 
 -- Function to convert value to string
 local function valueToString(value) 
