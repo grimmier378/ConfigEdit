@@ -37,6 +37,7 @@ local viewDocument = false -- Toggle for document view mode
 -- GUI Settings 
 local winFlags = bit32.bor(ImGuiWindowFlags.None)
 local getSortedPairs
+
 -- File Paths 
 local themeFile = string.format('%s/MyUI/MyThemeZ.lua', mq.configDir) 
 local defaultConfigFile = string.format('%s/MyUI/%s/%s_Configs.lua', mq.configDir, script, script) 
@@ -50,11 +51,13 @@ defaults = {
 	AutoSize = false, 
 }
 
+-- Function to check if a file exists
 local function File_Exists(name) 
 	local f = io.open(name, "r") 
 	if f ~= nil then io.close(f) return true else return false end 
 end
 
+-- Function to load the theme from a file
 local function loadTheme() 
 	if File_Exists(themeFile) then 
 		theme = dofile(themeFile) 
@@ -72,6 +75,7 @@ local function loadTheme()
 	end 
 end
 
+-- Function to load settings from a file
 local function loadSettings() 
 	local newSetting = false 
 	if not File_Exists(defaultConfigFile) then 
@@ -132,7 +136,7 @@ local function clearConfigData()
 	inputBuffer = {}
 end
 
--- Load configuration data based on file type
+-- Function to load configuration data based on file type
 local function loadConfig() 
 	if File_Exists(configFilePath) then 
 		if fileType == "Ini" and not viewDocument then 
@@ -152,6 +156,7 @@ local function loadConfig()
 	inputBuffer = {} -- Clear the input buffer 
 end
 
+-- Function to convert value to string
 local function valueToString(value) 
 	if type(value) == "function" then 
 		return "function() return true end" 
@@ -164,6 +169,7 @@ local function valueToString(value)
 	end 
 end
 
+-- Function to convert string back to original value type
 local function stringToValue(value, originalType) 
 	if value == "nil" then
 		return nil
@@ -178,7 +184,7 @@ local function stringToValue(value, originalType)
 	end 
 end
 
--- Save configuration data based on file type
+-- Function to save configuration data based on file type
 local function saveConfig(savePath) 
 	if viewDocument then
 		local f = io.open(savePath, "w")
@@ -228,6 +234,7 @@ local function saveConfig(savePath)
 	loadConfig() 
 end
 
+-- Function to check if a key-value pair matches the search filter
 local function matchesFilter(key, value)
 	local filter = searchFilter:lower()
 	if type(key) == "number" then
@@ -272,7 +279,7 @@ function getSortedPairs(t)
 	return iter
 end
 
--- Draw key-value pairs for INI files
+-- Function to draw key-value pairs for INI files
 local function drawIniKeyValueSection(section, data, baseKey, depth)
 	local i = 1
 	while i <= #data do
@@ -319,7 +326,7 @@ local function drawIniKeyValueSection(section, data, baseKey, depth)
 	end
 end
 
--- Draw key-value pairs for Lua files
+-- Function to draw key-value pairs for Lua files
 local function drawLuaKeyValueSection(section, data, baseKey, depth) 
 	for key, value in pairs(data) do 
 		if type(value) == "table" then 
@@ -342,6 +349,7 @@ local function drawLuaKeyValueSection(section, data, baseKey, depth)
 	end 
 end
 
+-- Function to draw nested sections for INI files
 local function drawIniNestedSection(data, baseKey, depth)
 	for section, entries in pairs(data) do
 		drawIniSection(section, entries, baseKey, depth + 1)
@@ -349,6 +357,7 @@ local function drawIniNestedSection(data, baseKey, depth)
 	end
 end
 
+-- Function to draw table sections for Lua files
 local function drawLuaTableSection(section, data, baseKey) 
 	ImGui.Columns(3, "table_columns", true) 
 	for i = 1, #data do 
@@ -384,6 +393,7 @@ local function drawLuaTableSection(section, data, baseKey)
 	end 
 end
 
+-- Function to draw nested sections for Lua files
 local function drawLuaNestedSection(data, baseKey, depth)
 	for key, value in getSortedPairs(data) do 
 		if type(value) == "table" then 
@@ -394,6 +404,7 @@ local function drawLuaNestedSection(data, baseKey, depth)
 	end 
 end
 
+-- Function to draw a section for INI files
 function drawIniSection(section, data, baseKey, depth)
 	if type(section) ~= "string" then
 		section = tostring(section)
@@ -410,6 +421,7 @@ function drawIniSection(section, data, baseKey, depth)
 	end
 end
 
+-- Function to draw a section for Lua files
 function drawLuaSection(section, data, baseKey, depth)
 	if type(section) ~= "string" then 
 		section = tostring(section) 
@@ -435,6 +447,7 @@ function drawLuaSection(section, data, baseKey, depth)
 	end
 end
 
+-- Function to draw the general section for Lua files
 local function drawGeneralSection(data, baseKey)
 	if searchFilter == "" or matchesFilter("Generic", data) then
 		if ImGui.CollapsingHeader("Generic") then
@@ -448,10 +461,10 @@ local function drawGeneralSection(data, baseKey)
 	end
 end
 
--- Draw multiline input box for CFG files
+-- Function to draw multiline input box for CFG files
 local function drawDocumentEditor()
 	local cfgText = table.concat(configData, "\n")
-	local inputText = ImGui.InputTextMultiline("##cfgEditor", cfgText, -1, ImGui.GetContentRegionAvail())
+	local inputText = ImGui.InputTextMultiline("##cfgEditor", cfgText, -1, 0.0)
 	if inputText ~= cfgText then
 		configData = {}
 		for line in inputText:gmatch("[^\r\n]+") do
@@ -460,6 +473,7 @@ local function drawDocumentEditor()
 	end
 end
 
+-- Function to draw the configuration GUI
 local function drawConfigGUI() 
 	if viewDocument then
 		drawDocumentEditor()
@@ -489,6 +503,7 @@ local function drawConfigGUI()
 	end
 end
 
+-- Function to get the contents of a directory
 local function getDirectoryContents(path) 
 	local folders = {} 
 	local files = {} 
@@ -506,6 +521,7 @@ local function getDirectoryContents(path)
 	return folders, files 
 end
 
+-- Function to draw the file selector
 local function drawFileSelector() 
 
 	local folders, files = getDirectoryContents(currentDirectory) 
@@ -543,7 +559,7 @@ local function drawFileSelector()
 	
 end
 
-
+-- Function to draw the save file selector
 local function drawSaveFileSelector() 
 	local folders = getDirectoryContents(saveConfigDirectory) 
 	ImGui.Text("Save Directory: " .. saveConfigDirectory) 
@@ -576,168 +592,175 @@ local function drawSaveFileSelector()
 	end 
 end
 
-local function Draw_GUI() 
-	if showMainGUI then 
-		local winName = string.format('%s##Main', script) 
-		local ColorCount, StyleCount = LoadTheme.StartTheme(theme.Theme[themeID]) 
-		local openMain, showMain = ImGui.Begin(winName, true, bit32.bor(winFlags, ImGuiWindowFlags.MenuBar)) 
-		if not openMain then 
-			showMainGUI = false 
-		end 
-		if showMain then 
-			if ImGui.BeginMenuBar() then 
-				if ImGui.BeginMenu("File") then 
-					if ImGui.MenuItem("Save") then 
-						showSaveFileSelector = true
-					end
-					if ImGui.MenuItem("Create Backup") then 
-						createBackup = true
-						showSaveFileSelector = true
-					end
-					ImGui.SeparatorText("File Type")
-					if ImGui.MenuItem("CFG", nil, fileType == "Cfg") then
-						fileType = "Cfg"
-						clearConfigData()
-						showOpenFileSelector = true
-					end
-					if ImGui.MenuItem("INI", nil, fileType == "Ini") then
-						fileType = "Ini"
-						clearConfigData()
-						showOpenFileSelector = true
-					end
-					if ImGui.MenuItem("Lua", nil, fileType == "Lua") then
-						fileType = "Lua"
-						clearConfigData()
-						showOpenFileSelector = true
-					end
-					if ImGui.MenuItem("Log", nil, fileType == "Log") then
-						fileType = "Log"
-						clearConfigData()
-						showOpenFileSelector = true
-					end
-					ImGui.Separator()
-					if ImGui.MenuItem("Exit") then 
-						showMainGUI = false 
-					end
-					ImGui.EndMenu()
-				end
-				if ImGui.BeginMenu("Options") then
-					if ImGui.MenuItem("Document View", nil, viewDocument) then
-						viewDocument = not viewDocument
-						if selectedFile then
-							loadConfig()
+-- Main function to draw the GUI
+	local function Draw_GUI() 
+		if showMainGUI then 
+			local winName = string.format('%s##Main2', script) 
+			local ColorCount, StyleCount = LoadTheme.StartTheme(theme.Theme[themeID]) 
+			local openMain, showMain = ImGui.Begin(winName, true, bit32.bor(winFlags, ImGuiWindowFlags.MenuBar)) 
+			if not openMain then 
+				showMainGUI = false 
+			end 
+			if showMain then 
+				if ImGui.BeginMenuBar() then 
+					if ImGui.BeginMenu("File") then 
+						if ImGui.MenuItem("Save") then 
+							showSaveFileSelector = true
 						end
+						if ImGui.MenuItem("Create Backup") then 
+							createBackup = true
+							showSaveFileSelector = true
+						end
+						ImGui.SeparatorText("File Type")
+						if ImGui.MenuItem("CFG", nil, fileType == "Cfg") then
+							fileType = "Cfg"
+							clearConfigData()
+							showOpenFileSelector = true
+						end
+						if ImGui.MenuItem("INI", nil, fileType == "Ini") then
+							fileType = "Ini"
+							clearConfigData()
+							showOpenFileSelector = true
+						end
+						if ImGui.MenuItem("Lua", nil, fileType == "Lua") then
+							fileType = "Lua"
+							clearConfigData()
+							showOpenFileSelector = true
+						end
+						if ImGui.MenuItem("Log", nil, fileType == "Log") then
+							fileType = "Log"
+							clearConfigData()
+							showOpenFileSelector = true
+						end
+						ImGui.Separator()
+						if ImGui.MenuItem("Exit") then 
+							showMainGUI = false 
+						end
+						ImGui.EndMenu()
 					end
-					if ImGui.MenuItem("Window Settings") then 
-						showConfigGUI = true
+					if ImGui.BeginMenu("Options") then
+						if ImGui.MenuItem("Document View", nil, viewDocument) then
+							viewDocument = not viewDocument
+							if selectedFile then
+								loadConfig()
+							end
+						end
+						if ImGui.MenuItem("Window Settings") then 
+							showConfigGUI = true
+						end
+						ImGui.EndMenu()
 					end
-					ImGui.EndMenu()
+					ImGui.EndMenuBar() 
 				end
-				ImGui.EndMenuBar() 
-			end
-			ImGui.SetWindowFontScale(scale) 
-
-			ImGui.Text("Config File: " .. (configFilePath or "None")) 
-			ImGui.Separator() 
-			ImGui.Text("Mode: " .. fileType)
-            
-			local sizeX, sizeY = ImGui.GetContentRegionAvail()
-			searchFilter = ImGui.InputTextWithHint("##search", "Search...", searchFilter):lower()
-			if ImGui.BeginChild("ConfigEditor", ImVec2(0, sizeY - 60), bit32.bor(ImGuiChildFlags.Border)) then
-				ImGui.SeparatorText("Config File")
-				if configFilePath and configFilePath ~= "" then
-					childHeight = (sizeY - 60) * .5
-					drawConfigGUI()
-				end
-			ImGui.EndChild()
-		end
-			ImGui.SetWindowFontScale(1)
-		end
-		LoadTheme.EndTheme(ColorCount, StyleCount)
-		ImGui.End()
-	end
-
-	if showConfigGUI then
-		local winName = string.format('%s Config##Config', script)
-		local ColCntConf, StyCntConf = LoadTheme.StartTheme(theme.Theme[themeID])
-		local openConfig, showConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
-		if not openConfig then
-			showConfigGUI = false
-		end
-		if showConfig then
-			ImGui.SeparatorText("Config Editor Settings")
-			ImGui.SeparatorText("Theme##"..script)
-			ImGui.Text("Cur Theme: %s", themeName)
-			if ImGui.BeginCombo("Load Theme##"..script, themeName) then
-				for k, data in pairs(theme.Theme) do
-					local isSelected = data.Name == themeName
-					if ImGui.Selectable(data.Name, isSelected) then
-						theme.LoadTheme = data.Name
-						themeID = k
-						themeName = theme.LoadTheme
+				ImGui.SetWindowFontScale(scale) 
+	
+				ImGui.Text("Config File: " .. (configFilePath or "None")) 
+				ImGui.Separator() 
+				ImGui.Text("Mode: " .. fileType)
+				
+				-- local sizeX, sizeY = ImGui.GetContentRegionAvail()
+				-- sizeY = math.max(sizeY, 100) -- Ensure a minimum height to prevent issues
+				-- sizeX = math.max(sizeX, 100) -- Ensure a minimum width to prevent issues
+				if selectedFile then
+				searchFilter = ImGui.InputTextWithHint("##search", "Search...", searchFilter):lower()
+				if ImGui.BeginChild("ConfigEditor##"..script, ImVec2(0,0), bit32.bor(ImGuiChildFlags.Border)) then
+					ImGui.SeparatorText("Config File")
+					if configFilePath and configFilePath ~= "" then
+						-- childHeight = (sizeY - 60) * .5
+						drawConfigGUI()
 					end
+					-- ImGui.EndChild()
 				end
-				ImGui.EndCombo()
+				ImGui.EndChild()
 			end
-			scale = ImGui.SliderFloat("Scale##"..script, scale, 0.5, 2)
-			if scale ~= settings[script].Scale then
-				if scale < 0.5 then scale = 0.5 end
-				if scale > 2 then scale = 2 end
+				ImGui.SetWindowFontScale(1)
 			end
-			if hasThemeZ then
-				if ImGui.Button('Edit ThemeZ') then
-					mq.cmd("/lua run themez")
-				end
-				ImGui.SameLine()
-			end
-			if ImGui.Button('Reload Theme File') then
-				loadTheme()
-			end
-			if ImGui.Button("Save & Close") then
-				settings = dofile(defaultConfigFile)
-				settings[script].Scale = scale
-				settings[script].LoadTheme = themeName
-				mq.pickle(defaultConfigFile, settings)
+			LoadTheme.EndTheme(ColorCount, StyleCount)
+			ImGui.End()
+		end
+	
+		if showConfigGUI then
+			local winName = string.format('%s Config##Config', script)
+			local ColCntConf, StyCntConf = LoadTheme.StartTheme(theme.Theme[themeID])
+			local openConfig, showConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
+			if not openConfig then
 				showConfigGUI = false
 			end
+			if showConfig then
+				ImGui.SeparatorText("Config Editor Settings")
+				ImGui.SeparatorText("Theme##"..script)
+				ImGui.Text("Cur Theme: %s", themeName)
+				if ImGui.BeginCombo("Load Theme##"..script, themeName) then
+					for k, data in pairs(theme.Theme) do
+						local isSelected = data.Name == themeName
+						if ImGui.Selectable(data.Name, isSelected) then
+							theme.LoadTheme = data.Name
+							themeID = k
+							themeName = theme.LoadTheme
+						end
+					end
+					ImGui.EndCombo()
+				end
+				scale = ImGui.SliderFloat("Scale##"..script, scale, 0.5, 2)
+				if scale ~= settings[script].Scale then
+					if scale < 0.5 then scale = 0.5 end
+					if scale > 2 then scale = 2 end
+				end
+				if hasThemeZ then
+					if ImGui.Button('Edit ThemeZ') then
+						mq.cmd("/lua run themez")
+					end
+					ImGui.SameLine()
+				end
+				if ImGui.Button('Reload Theme File') then
+					loadTheme()
+				end
+				if ImGui.Button("Save & Close") then
+					settings = dofile(defaultConfigFile)
+					settings[script].Scale = scale
+					settings[script].LoadTheme = themeName
+					mq.pickle(defaultConfigFile, settings)
+					showConfigGUI = false
+				end
+			end
+			LoadTheme.EndTheme(ColCntConf, StyCntConf)
+			ImGui.End()
 		end
-		LoadTheme.EndTheme(ColCntConf, StyCntConf)
-		ImGui.End()
-	end
+		
+		if showSaveFileSelector then
+			if not showSaveFileSelector then return end
+			local winName = string.format('%s Save##Save', script)
+			local ColCntExp, StyCntExp = LoadTheme.StartTheme(theme.Theme[themeID])
+			local openSaveConfig, showSaveConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
+			if not openSaveConfig then
+				showSaveFileSelector = false
+			end
+			if showSaveConfig then
+				drawSaveFileSelector()
+			end
+			LoadTheme.EndTheme(ColCntExp, StyCntExp)
+			ImGui.End()
+		end
 	
-	if showSaveFileSelector then
-		if not showSaveFileSelector then return end
-		local winName = string.format('%s Save##Save', script)
-		local ColCntExp, StyCntExp = LoadTheme.StartTheme(theme.Theme[themeID])
-		local openSaveConfig, showSaveConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
-		if not openSaveConfig then
-			showSaveFileSelector = false
+		if showOpenFileSelector then
+			if not showOpenFileSelector then return end
+			local winName = string.format('%s Open##Open', script)
+			local ColCntOpn, StyCntOpn = LoadTheme.StartTheme(theme.Theme[themeID])
+			local openOpenConfig, showOpenWin = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
+			if not openOpenConfig then
+				showOpenFileSelector = false
+			end
+			if showOpenWin then
+				if ImGui.Button("Cancel") then showOpenFileSelector = false end
+				drawFileSelector()
+	
+			end
+			LoadTheme.EndTheme(ColCntOpn, StyCntOpn)
+			ImGui.End()
 		end
-		if showSaveConfig then
-			drawSaveFileSelector()
-		end
-		LoadTheme.EndTheme(ColCntExp, StyCntExp)
-		ImGui.End()
 	end
 
-	if showOpenFileSelector then
-		if not showOpenFileSelector then return end
-		local winName = string.format('%s Open##Open', script)
-		local ColCntOpn, StyCntOpn = LoadTheme.StartTheme(theme.Theme[themeID])
-		local openOpenConfig, showOpenWin = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
-		if not openOpenConfig then
-			showOpenFileSelector = false
-		end
-		if showOpenWin then
-			if ImGui.Button("Cancel") then showOpenFileSelector = false end
-			drawFileSelector()
-
-		end
-		LoadTheme.EndTheme(ColCntOpn, StyCntOpn)
-		ImGui.End()
-	end
-end
-
+-- Function to initialize the script
 local function Init() 
 	loadSettings() 
 	if File_Exists(themezDir) then 
@@ -746,10 +769,11 @@ local function Init()
 	mq.imgui.init('ConfigEdit', Draw_GUI) 
 end
 
+-- Main loop function to keep the script running
 local function Loop() 
 	while RUNNING do 
 		RUNNING = showMainGUI 
-		winFlags = locked and bit32.bor(ImGuiWindowFlags.NoMove) or bit32.bor(ImGuiWindowFlags.None) 
+		winFlags = locked and bit32.bor(ImGuiWindowFlags.NoMove, ImGuiWindowFlags.NoDocking) or bit32.bor(ImGuiWindowFlags.NoDocking) 
 		winFlags = aSize and bit32.bor(winFlags, ImGuiWindowFlags.AlwaysAutoResize) or winFlags 
 		mq.delay(100) 
 	end 
