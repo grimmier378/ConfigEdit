@@ -682,7 +682,12 @@ local function Draw_GUI()
 			ImGui.Text("Config File: " .. (configFilePath or "None")) 
 			ImGui.Separator() 
 			ImGui.Text("Mode: " .. fileType)
-			
+			if showOpenFileSelector then
+				drawFileSelector()
+			end
+			if showSaveFileSelector then
+				drawSaveFileSelector()
+			end
 			-- local sizeX, sizeY = ImGui.GetContentRegionAvail()
 			-- sizeY = math.max(sizeY, 100) -- Ensure a minimum height to prevent issues
 			-- sizeX = math.max(sizeX, 100) -- Ensure a minimum width to prevent issues
@@ -749,47 +754,6 @@ local function Draw_GUI()
 			end
 		end
 		LoadTheme.EndTheme(ColCntConf, StyCntConf)
-		ImGui.End()
-	end
-	
-	if showSaveFileSelector then
-		if not showSaveFileSelector then return end
-		ImGui.SetNextWindowPos(500, 300, ImGuiCond.Appearing)
-		local winName = string.format('%s Save##Save', script)
-		local ColCntExp, StyCntExp = LoadTheme.StartTheme(theme.Theme[themeID])
-		local openSaveConfig, showSaveConfig = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
-		
-		-- Focus the window to keep it on top
-		ImGui.SetWindowFocus(winName)
-
-		if not openSaveConfig then
-			showSaveFileSelector = false
-		end
-		if showSaveConfig then
-			drawSaveFileSelector()
-		end
-		LoadTheme.EndTheme(ColCntExp, StyCntExp)
-		ImGui.End()
-	end
-
-	if showOpenFileSelector then
-		if not showOpenFileSelector then return end
-		local winName = string.format('%s Open##Open', script)
-		ImGui.SetNextWindowPos(500, 300, ImGuiCond.Appearing)
-		local ColCntOpn, StyCntOpn = LoadTheme.StartTheme(theme.Theme[themeID])
-		local openOpenConfig, showOpenWin = ImGui.Begin(winName, true, bit32.bor(ImGuiWindowFlags.NoCollapse, ImGuiWindowFlags.AlwaysAutoResize))
-		
-		-- Focus the window to keep it on top
-		ImGui.SetWindowFocus(winName)
-	
-		if not openOpenConfig then
-			showOpenFileSelector = false
-		end
-		if showOpenWin then
-			if ImGui.Button("Cancel") then showOpenFileSelector = false end
-			drawFileSelector()
-		end
-		LoadTheme.EndTheme(ColCntOpn, StyCntOpn)
 		ImGui.End()
 	end
 end
