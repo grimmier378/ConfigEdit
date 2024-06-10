@@ -204,7 +204,7 @@ local function stringToValue(value, originalType)
 end
 
 -- Function to save configuration data based on file type
-local function saveConfig(savePath) 
+local function saveConfig(savePath)
 	if viewDocument then
 		local f = io.open(savePath, "w")
 		for _, line in ipairs(configData) do
@@ -226,9 +226,9 @@ local function saveConfig(savePath)
 			f:write(line .. "\n")
 		end
 		f:close()
-	else 
+	else
 		for key, value in pairs(inputBuffer) do 
-			local keys = {} 
+			local keys = {}
 			for match in string.gmatch(key, "([^%.]+)") do 
 				table.insert(keys, match) 
 			end
@@ -241,11 +241,8 @@ local function saveConfig(savePath)
 				current = current[keys[i]] 
 			end
 
-			if tonumber(keys[#keys]) then 
-				current[tonumber(keys[#keys])] = stringToValue(value, type(current[tonumber(keys[#keys])])) 
-			else 
-				current[keys[#keys]] = stringToValue(value, type(current[keys[#keys]])) 
-			end 
+			local finalKey = tonumber(keys[#keys]) or keys[#keys]  -- Convert to number if possible
+			current[finalKey] = stringToValue(value, type(current[finalKey] or value)) 
 		end
 		mq.pickle(savePath, configData) 
 	end 
@@ -283,7 +280,13 @@ function getSortedPairs(t)
 	for k in pairs(t) do
 		table.insert(sortedKeys, k)
 	end
-	table.sort(sortedKeys)
+	table.sort(sortedKeys, function(a, b)
+		-- Ensure numeric keys are compared correctly
+		if tonumber(a) and tonumber(b) then
+			return tonumber(a) < tonumber(b)
+		end
+		return a < b
+	end)
 
 	local i = 0
 	local iter = function ()
@@ -349,7 +352,7 @@ end
 local function drawLuaKeyValueSection(section, data, baseKey, depth) 
 	for key, value in pairs(data) do 
 		if type(value) == "table" then 
-			drawLuaSection(key, value, baseKey) 
+			drawLuaSection(key, value, baseKey, depth) 
 		else 
 			ImGui.Text(key) 
 			ImGui.SameLine() 
@@ -369,11 +372,14 @@ local function drawLuaKeyValueSection(section, data, baseKey, depth)
 end
 
 -- Function to draw nested sections for INI files
-local function drawIniNestedSection(data, baseKey, depth)
-	for section, entries in pairs(data) do
-		drawIniSection(section, entries, baseKey, depth + 1)
-		ImGui.Dummy(10, 20)
-	end
+local function drawLuaNestedSection(data, baseKey, depth)
+	for key, value in getSortedPairs(data) do 
+		if type(value) == "table" then 
+			drawLuaSection(key, value, baseKey, depth) 
+		else 
+			drawLuaKeyValueSection(key, { [key] = value }, baseKey, depth) 
+		end 
+	end 
 end
 
 -- Function to draw table sections for Lua files
@@ -423,25 +429,9 @@ local function drawLuaNestedSection(data, baseKey, depth)
 	end 
 end
 
--- Function to draw a section for INI files
-function drawIniSection(section, data, baseKey, depth)
-	if type(section) ~= "string" then
-		section = tostring(section)
-	end
-	local fullKey = baseKey .. section .. "."
-	if searchFilter == "" or matchesFilter(section, data) then
-		ImGui.Indent(depth * 10)
-		if ImGui.CollapsingHeader(section .. "##" .. fullKey) then
-			ImGui.Separator()
-			drawIniKeyValueSection(section, data, baseKey, depth + 1)
-			ImGui.Separator()
-		end
-		ImGui.Unindent(depth * 10)
-	end
-end
-
 -- Function to draw a section for Lua files
 function drawLuaSection(section, data, baseKey, depth)
+	depth = depth or 0  -- Ensure depth is initialized
 	if type(section) ~= "string" then 
 		section = tostring(section) 
 	end 
@@ -455,7 +445,7 @@ function drawLuaSection(section, data, baseKey, depth)
 					drawLuaTableSection(section, data, fullKey) 
 					ImGui.Dummy(10, 20)
 				else 
-					drawLuaNestedSection(data, fullKey) 
+					drawLuaNestedSection(data, fullKey, depth + 1) 
 					ImGui.Dummy(10, 20)
 				end 
 			end 
@@ -466,13 +456,12 @@ function drawLuaSection(section, data, baseKey, depth)
 	end
 end
 
--- Function to draw the general section for Lua files
 local function drawGeneralSection(data, baseKey)
 	if searchFilter == "" or matchesFilter("Generic", data) then
 		if ImGui.CollapsingHeader("Generic") then
 			ImGui.Separator()
 			-- ImGui.BeginChild("Child_General", ImVec2(0, childHeight - 30), bit32.bor(ImGuiChildFlags.Border))
-			drawLuaKeyValueSection("Generic", data, baseKey)
+			drawLuaKeyValueSection("Generic", data, baseKey, 0)
 			-- ImGui.EndChild()
 			ImGui.Dummy(10, 20)
 			ImGui.Separator()
@@ -493,6 +482,7 @@ local function drawDocumentEditor()
 end
 
 -- Function to draw the configuration GUI
+
 local function drawConfigGUI() 
 	if viewDocument then
 		drawDocumentEditor()
@@ -510,7 +500,7 @@ local function drawConfigGUI()
 				if type(value) == "function" then 
 					generalData[key] = tostring(value) 
 				elseif type(value) == "table" then 
-					drawLuaSection(key, value, "") 
+					drawLuaSection(key, value, "", 0) 
 				else 
 					generalData[key] = value 
 				end 
@@ -540,9 +530,35 @@ local function getDirectoryContents(path)
 	return folders, files 
 end
 
+-- Function to draw the folder button tree
+local function drawFolderButtonTree(currentPath)
+	local folders = {}
+	for folder in string.gmatch(currentPath, "[^/]+") do
+		table.insert(folders, folder)
+	end
+
+	local path = ""
+	for i, folder in ipairs(folders) do
+		path = path .. folder .. "/"
+		ImGui.PushStyleColor(ImGuiCol.Button, ImVec4(0.2, 0.2, 0.2, 1))
+		local btnLblFolder = string.format("^%s",mq.TLO.MacroQuest.Path())
+		btnLblFolder = folder:gsub(btnLblFolder,"...")
+		if ImGui.Button(btnLblFolder) then
+			currentDirectory = path:gsub("/$", "")
+		end
+		ImGui.PopStyleColor()
+		if i < #folders then
+			ImGui.SameLine()
+			ImGui.Text("/")
+			ImGui.SameLine()
+		end
+	end
+end
+
 -- Function to draw the file selector
 local function drawFileSelector() 
-
+	drawFolderButtonTree(currentDirectory)
+ImGui.Separator()
 	local folders, files = getDirectoryContents(currentDirectory) 
 	if currentDirectory ~= mq.TLO.MacroQuest.Path() then
 		if ImGui.Button("Back") then 
@@ -552,7 +568,7 @@ local function drawFileSelector()
 	end 
 	local tmpFolder = currentDirectory:gsub(mq.TLO.MacroQuest.Path().."/", "") 
 	ImGui.SetNextItemWidth(180) 
-	if ImGui.BeginCombo("Folders", tmpFolder) then 
+	if ImGui.BeginCombo("Select Folder", tmpFolder) then 
 		for _, folder in ipairs(folders) do 
 			if ImGui.Selectable(folder) then 
 				currentDirectory = currentDirectory .. '/' .. folder 
@@ -563,7 +579,7 @@ local function drawFileSelector()
 
 	local tmpfile = configFilePath:gsub(currentDirectory.."/", "") 
 	ImGui.SetNextItemWidth(180) 
-	if ImGui.BeginCombo("Files", tmpfile or "Select a file") then 
+	if ImGui.BeginCombo("Select File", tmpfile or "Select a file") then 
 		for _, file in ipairs(files) do 
 			if ImGui.Selectable(file) then 
 				selectedFile = file 
@@ -575,19 +591,28 @@ local function drawFileSelector()
 		end 
 		ImGui.EndCombo() 
 	end 
-	
+	if ImGui.Button('Cancel##Open') then 
+		showOpenFileSelector = false 
+	end
 end
 
 -- Function to draw the save file selector
 local function drawSaveFileSelector() 
-	local folders = getDirectoryContents(saveConfigDirectory) 
+	drawFolderButtonTree(saveConfigDirectory)
+	ImGui.Separator()
+	local folders, files = getDirectoryContents(saveConfigDirectory) 
 	ImGui.Text("Save Directory: " .. saveConfigDirectory) 
-	if saveConfigDirectory ~= mq.TLO.MacroQuest.Path() and ImGui.Button("Back") then 
-		saveConfigDirectory = saveConfigDirectory:match("(.*)/[^/]+$") 
+	
+	if saveConfigDirectory ~= mq.TLO.MacroQuest.Path() then
+		if ImGui.Button("Back") then 
+			saveConfigDirectory = saveConfigDirectory:match("(.*)/[^/]+$") 
+			
+		end
+		ImGui.SameLine()
 	end
 	local tmpFolder = saveConfigDirectory:gsub(mq.TLO.MacroQuest.Path().."/", "") 
 	ImGui.SetNextItemWidth(120) 
-	if ImGui.BeginCombo("Folders", tmpFolder or "Select a folder") then 
+	if ImGui.BeginCombo("Select Folder", tmpFolder or "Select a folder") then 
 		for _, folder in ipairs(folders) do 
 			if ImGui.Selectable(folder) then 
 				saveConfigDirectory = saveConfigDirectory .. '/' .. folder 
@@ -608,7 +633,11 @@ local function drawSaveFileSelector()
 			loadConfig() 
 			showSaveFileSelector = false 
 		end
-	end 
+	end
+	ImGui.SameLine()
+	if ImGui.Button('Cancel##Save') then 
+		showSaveFileSelector = false 
+	end
 end
 
 -- Main function to draw the GUI
@@ -625,34 +654,42 @@ local function Draw_GUI()
 				if ImGui.BeginMenu("File") then 
 					if selectedFile ~= nil then
 						if ImGui.MenuItem("Save") then 
+							saveConfigDirectory = currentDirectory  -- Pre-select the current directory
+							showOpenFileSelector = false
 							showSaveFileSelector = true
 						end
 						if ImGui.MenuItem("Create Backup") then 
+							saveConfigDirectory = currentDirectory  -- Pre-select the current directory
 							createBackup = true
+							showOpenFileSelector = false
 							showSaveFileSelector = true
 						end
 					end
 					ImGui.SeparatorText("Open File Type")
 					if ImGui.MenuItem("Open file *.cfg", nil) then
 						showOpenFileSelector = false
+						showSaveFileSelector = false 
 						fileType = "Cfg"
 						clearConfigData()
 						showOpenFileSelector = true
 					end
 					if ImGui.MenuItem("Open File *.ini", nil) then
 						showOpenFileSelector = false
+						showSaveFileSelector = false 
 						fileType = "Ini"
 						clearConfigData()
 						showOpenFileSelector = true
 					end
 					if ImGui.MenuItem("Open File *.lua", nil) then
 						showOpenFileSelector = false
+						showSaveFileSelector = false 
 						fileType = "Lua"
 						clearConfigData()
 						showOpenFileSelector = true
 					end
 					if ImGui.MenuItem("Open File *.log", nil) then
 						showOpenFileSelector = false
+						showSaveFileSelector = false 
 						fileType = "Log"
 						clearConfigData()
 						showOpenFileSelector = true
@@ -678,31 +715,26 @@ local function Draw_GUI()
 				ImGui.EndMenuBar() 
 			end
 			ImGui.SetWindowFontScale(scale) 
-
-			ImGui.Text("Config File: " .. (configFilePath or "None")) 
-			ImGui.Separator() 
 			ImGui.Text("Mode: " .. fileType)
+			ImGui.Separator() 
+			ImGui.Text("Config File: " .. (configFilePath or "None")) 
+			
 			if showOpenFileSelector then
 				drawFileSelector()
 			end
 			if showSaveFileSelector then
 				drawSaveFileSelector()
 			end
-			-- local sizeX, sizeY = ImGui.GetContentRegionAvail()
-			-- sizeY = math.max(sizeY, 100) -- Ensure a minimum height to prevent issues
-			-- sizeX = math.max(sizeX, 100) -- Ensure a minimum width to prevent issues
 			if selectedFile then
-			searchFilter = ImGui.InputTextWithHint("##search", "Search...", searchFilter):lower()
-			if ImGui.BeginChild("ConfigEditor##"..script, ImVec2(0,0), bit32.bor(ImGuiChildFlags.Border)) then
-				ImGui.SeparatorText("Config File")
-				if configFilePath and configFilePath ~= "" then
-					-- childHeight = (sizeY - 60) * .5
-					drawConfigGUI()
+				searchFilter = ImGui.InputTextWithHint("##search", "Search...", searchFilter):lower()
+				if ImGui.BeginChild("ConfigEditor##"..script, ImVec2(0,0), bit32.bor(ImGuiChildFlags.Border)) then
+					ImGui.SeparatorText("Config File")
+					if configFilePath and configFilePath ~= "" then
+						drawConfigGUI()
+					end
 				end
-				-- ImGui.EndChild()
+				ImGui.EndChild()
 			end
-			ImGui.EndChild()
-		end
 			ImGui.SetWindowFontScale(1)
 		end
 		LoadTheme.EndTheme(ColorCount, StyleCount)
