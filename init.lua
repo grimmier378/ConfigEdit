@@ -207,6 +207,9 @@ end
 local function saveConfig(savePath)
 	if viewDocument then
 		local f = io.open(savePath, "w")
+		if f== nil then
+			error("Error opening file for writing: " .. savePath)
+		end
 		for _, line in ipairs(configData) do
 			f:write(line .. "\n")
 		end
@@ -222,6 +225,9 @@ local function saveConfig(savePath)
 		LIP.save(savePath, iniData)
 	elseif fileType == "Cfg" or fileType == "Log" then
 		local f = io.open(savePath, "w")
+		if f== nil then
+			error("Error opening file for writing: " .. savePath)
+		end
 		for _, line in ipairs(configData) do
 			f:write(line .. "\n")
 		end
@@ -346,6 +352,23 @@ local function drawIniKeyValueSection(section, data, baseKey, depth)
 		inputBuffer[baseKey .. section .. "_" .. newIndex .. "_key"] = "NewKey"
 		inputBuffer[baseKey .. section .. "_" .. newIndex .. "_value"] = "NewValue"
 	end
+end
+
+-- Function to draw a section for INI files
+function drawIniSection(section, data, baseKey, depth)
+	if type(section) ~= "string" then
+		section = tostring(section)
+	end
+	local fullKey = baseKey .. section .. "."
+	if searchFilter == "" or matchesFilter(section, data) then
+		ImGui.Indent(depth * 10)
+		if ImGui.CollapsingHeader(section .. "##" .. fullKey) then
+			ImGui.Separator()
+			drawIniKeyValueSection(section, data, baseKey, depth + 1)
+			ImGui.Separator()
+		end
+		ImGui.Unindent(depth * 10)
+	end 
 end
 
 -- Function to draw key-value pairs for Lua files
