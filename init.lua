@@ -32,7 +32,7 @@ local fileType = "Lua" -- Options: "Lua", "Ini", "Cfg"
 local searchFilter = ""
 local createBackup = false
 local viewDocument = false -- Toggle for document view mode
-
+local drawLuaSection, drawLuaNestedSection, drawLuaKeyValueSection, drawLuaTableSection
 -- GUI Settings 
 local winFlags = bit32.bor(ImGuiWindowFlags.None)
 local getSortedPairs
@@ -203,6 +203,28 @@ local function stringToValue(value, originalType)
 	end 
 end
 
+-- Function to update nested table from input buffer
+local function updateNestedTableFromBuffer(t, buffer, baseKey)
+	for key, value in pairs(buffer) do
+		local keys = {}
+		for match in string.gmatch(key, "([^%.]+)") do 
+			table.insert(keys, match) 
+		end
+		
+		local current = t
+		for i = 1, #keys - 1 do
+			local k = tonumber(keys[i]) or keys[i]
+			if current[k] == nil then
+				current[k] = {}
+			end
+			current = current[k]
+		end
+		
+		local finalKey = tonumber(keys[#keys]) or keys[#keys]
+		current[finalKey] = stringToValue(value, type(current[finalKey]))
+	end
+end
+
 -- Function to save configuration data based on file type
 local function saveConfig(savePath)
 	if viewDocument then
@@ -233,23 +255,7 @@ local function saveConfig(savePath)
 		end
 		f:close()
 	else
-		for key, value in pairs(inputBuffer) do 
-			local keys = {}
-			for match in string.gmatch(key, "([^%.]+)") do 
-				table.insert(keys, match) 
-			end
-
-			local current = configData 
-			for i = 1, #keys - 1 do 
-				if current[keys[i]] == nil then 
-					current[keys[i]] = {} 
-				end 
-				current = current[keys[i]] 
-			end
-
-			local finalKey = tonumber(keys[#keys]) or keys[#keys]  -- Convert to number if possible
-			current[finalKey] = stringToValue(value, type(current[finalKey] or value)) 
-		end
+		updateNestedTableFromBuffer(configData, inputBuffer, "")
 		mq.pickle(savePath, configData) 
 	end 
 	configFilePath = savePath 
@@ -372,41 +378,30 @@ function drawIniSection(section, data, baseKey, depth)
 end
 
 -- Function to draw key-value pairs for Lua files
-local function drawLuaKeyValueSection(section, data, baseKey, depth) 
-	for key, value in pairs(data) do 
-		if type(value) == "table" then 
-			drawLuaSection(key, value, baseKey, depth) 
-		else 
-			ImGui.Text(key) 
-			ImGui.SameLine() 
-			ImGui.PushItemWidth(-1) 
-			local valueStr = valueToString(value) 
+function drawLuaKeyValueSection(section, data, baseKey, depth)
+	for key, value in pairs(data) do
+		if type(value) == "table" then
+			drawLuaSection(key, value, baseKey, depth)
+		else
+			ImGui.Text(key)
+			ImGui.SameLine()
+			ImGui.PushItemWidth(-1)
+			local valueStr = valueToString(value)
 			local inputId = baseKey .. key 
-			if inputBuffer[inputId] == nil then 
-				inputBuffer[inputId] = valueStr 
-			end 
-			inputBuffer[inputId] = ImGui.InputText(inputId, inputBuffer[inputId]) 
-			if inputBuffer[inputId] ~= valueStr then 
-				data[key] = stringToValue(inputBuffer[inputId], type(value)) 
-			end 
-			ImGui.PopItemWidth() 
-		end 
-	end 
-end
-
--- Function to draw nested sections for INI files
-local function drawLuaNestedSection(data, baseKey, depth)
-	for key, value in getSortedPairs(data) do 
-		if type(value) == "table" then 
-			drawLuaSection(key, value, baseKey, depth) 
-		else 
-			drawLuaKeyValueSection(key, { [key] = value }, baseKey, depth) 
-		end 
-	end 
+			if inputBuffer[inputId] == nil then
+				inputBuffer[inputId] = valueStr
+			end
+			inputBuffer[inputId] = ImGui.InputText(inputId, inputBuffer[inputId])
+			if inputBuffer[inputId] ~= valueStr then
+				data[key] = stringToValue(inputBuffer[inputId], type(value))
+			end
+			ImGui.PopItemWidth()
+		end
+	end
 end
 
 -- Function to draw table sections for Lua files
-local function drawLuaTableSection(section, data, baseKey) 
+function drawLuaTableSection(section, data, baseKey) 
 	ImGui.Columns(3, "table_columns", true) 
 	for i = 1, #data do 
 		ImGui.Text(tostring(i)) 
@@ -442,7 +437,7 @@ local function drawLuaTableSection(section, data, baseKey)
 end
 
 -- Function to draw nested sections for Lua files
-local function drawLuaNestedSection(data, baseKey, depth)
+function drawLuaNestedSection(data, baseKey, depth)
 	for key, value in getSortedPairs(data) do 
 		if type(value) == "table" then 
 			drawLuaSection(key, value, baseKey) 
