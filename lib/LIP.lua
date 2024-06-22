@@ -67,7 +67,6 @@ function LIP.load(fileName)
 				count =  count + 1
 				param = string.format("Spawn%d",count)
 			end
-			printf("%s = %s",param, value)
 			if data[section][param] ~= nil then
 				param = param.."_"..fluff
 				fluff = fluff + 1
