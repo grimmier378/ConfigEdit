@@ -38,6 +38,7 @@ function LIP.load(fileName)
 	local data = {};
 	local section;
 	local count = 0
+	local fluff = 5000
 	for line in file:lines() do
 		local tempSection = line:match('^%[([^%[%]]+)%]$');
 		if(tempSection)then
@@ -46,7 +47,11 @@ function LIP.load(fileName)
 			data[section] = data[section] or {};
 			count = 0
 		end
-		local param, value = line:match("^([%w|_'.%s-]+)=%s-(.+)$");
+		local param, value = line:match("^([%w|_'%(%)%/.%s-]+)=%s-(.+)$");
+		if param == nil then
+			param = line:match("^([%w|_'%(%)%/.%s-]+)=$");
+			value = ''
+		end
 		if(param and value ~= nil)then
 			if(tonumber(value))then
 				value = tonumber(value);
@@ -61,6 +66,11 @@ function LIP.load(fileName)
 			if string.find(tostring(param),'Spawn') then
 				count =  count + 1
 				param = string.format("Spawn%d",count)
+			end
+			printf("%s = %s",param, value)
+			if data[section][param] ~= nil then
+				param = param.."_"..fluff
+				fluff = fluff + 1
 			end
 			data[section][param] = value;
 		end
@@ -112,7 +122,14 @@ function LIP.save(fileName, data)
 		table.sort(keys)
 
 		for _, k in ipairs(keys) do
-			contents = contents .. ('%s=%s\n'):format(k, tostring(data[sectionKey][k]));
+			local ksection = k
+			if k:find("_%d+$") then
+				local fluff = k:sub(k:find("_%d+$")+1)
+				if tonumber(fluff) >= 5000 then
+					k = tostring(k):gsub("_(%d+)$","")
+				end
+			end
+			contents = contents .. ('%s=%s\n'):format(k, tostring(data[sectionKey][ksection]));
 		end
 		contents = contents .. '\n';
 	end
