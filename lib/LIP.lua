@@ -26,6 +26,15 @@
 -- Additions by Special Ed
     -- Sorting section/keys before saving ini files
 	-- Expanded pattern used for loading keys (underscores, periods, apostrophes)
+
+-- Additions by Grimmier
+	-- Added support for loading and saving files with UTF-8 BOM
+	-- Added support for loading and saving files with sections contain () and / characters
+	-- Added support for loading and saving files with keys contain () and / characters
+	-- Added support for loading and saving files with values are nil
+	-- Added support for loading and saving files with duplicate keys
+
+
 	local LIP = {};
 
 	--- Returns a table containing all the data from the INI file.
@@ -45,7 +54,7 @@
 		local data = {};
 		local section;
 		local count = 0
-		local fluff = 5000
+		local fluff = 5000 -- used to prevent duplicate keys from being overwritten
 	
 		for line in content:gmatch("[^\r\n]+") do
 			local tempSection = line:match('^%[([^%[%]]+)%]$');
@@ -56,7 +65,9 @@
 				count = 0
 			end
 			local param, value = line:match("^([%w|_'%(%)%/.%s-]+)=%s-(.+)$");
+			-- check for values that are nil
 			if param == nil then
+				-- if no value was found it didnt set param. lets check for a param with no value and use if found
 				param = line:match("^([%w|_'%(%)%/.%s-]+)=$");
 				value = ''
 			end
@@ -75,40 +86,11 @@
 					count =  count + 1
 					param = string.format("Spawn%d",count)
 				end
+				-- check if the key already exists and add a fluff value to it to prevent overwriting
 				if data[section][param] ~= nil then
 					param = param.."_"..fluff
 					fluff = fluff + 1
 				end
-				data[section][param] = value;
-			end
-		end
-	
-		return data;
-	end
-	
-	function LIP.loadSM(fileName)
-		assert(type(fileName) == 'string', 'Parameter "fileName" must be a string.');
-		local file = assert(io.open(fileName, 'rb'), 'Error loading file : ' .. fileName);
-		local content = file:read("*all")
-		file:close()
-	
-		-- Check and remove BOM if present
-		if content:sub(1, 3) == '\239\187\191' then
-			content = content:sub(4)
-		end
-	
-		local data = {};
-		local section;
-	
-		for line in content:gmatch("[^\r\n]+") do
-			local tempSection = line:match('^%[([^%[%]]+)%]');
-			if(tempSection)then
-				tempSection = string.lower(tempSection)
-				section = tonumber(tempSection) and tonumber(tempSection) or tempSection;
-				data[section] = data[section] or {};
-			end
-			local param, value = line:match("^([%w|_'.%s-]+)=%s-(.+)$");
-			if(param ~= 'OnSpawnCommand' and param ~= 'Enabled' and param ~= nil and value ~= nil)then
 				data[section][param] = value;
 			end
 		end
@@ -136,9 +118,10 @@
 			local keys = {}
 			for k, v in pairs(data[sectionKey]) do table.insert(keys, k) end
 			table.sort(keys)
-	
+			
 			for _, k in ipairs(keys) do
 				local ksection = k
+				-- check if the key has a fluff value and remove it before writing back to file
 				if k:find("_%d+$") then
 					local fluff = k:sub(k:find("_%d+$")+1)
 					if tonumber(fluff) >= 5000 then
