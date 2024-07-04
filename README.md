@@ -18,6 +18,7 @@ Allows you to also export them and save them elsewhere.
 * Backup configs will append _Backup to the file name and save it where you wish
 * Save file dialog will prompt for the folder so you can copy a file to a new location. 
 * also functions as a psuedo notepad for the above filetypes.
+* Now also edits E3 ini files.
 
 ## Media
 
