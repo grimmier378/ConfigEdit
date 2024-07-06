@@ -30,6 +30,7 @@ local selectedFile = nil
 local inputBuffer = {} 
 local fileType = "Lua" -- Options: "Lua", "Ini", "Cfg"
 local searchFilter = ""
+local copyName = ''
 local createBackup = false
 local viewDocument = false -- Toggle for document view mode
 local drawLuaSection, drawLuaNestedSection, drawLuaKeyValueSection, drawLuaTableSection
@@ -616,6 +617,7 @@ end
 
 -- Function to draw the save file selector
 local function drawSaveFileSelector() 
+	if  selectedFile == nil then return end
 	drawFolderButtonTree(saveConfigDirectory)
 	ImGui.Separator()
 	local folders, files = getDirectoryContents(saveConfigDirectory) 
@@ -638,24 +640,34 @@ local function drawSaveFileSelector()
 		end 
 		ImGui.EndCombo() 
 	end
+	if copyName == '' then
+		if createBackup then
+			copyName = selectedFile:gsub("%.", "_BAK%.")
+		else
+			copyName = selectedFile
+		end
+	end
+	copyName = ImGui.InputText("Save Name##CopyName", copyName)
+	if selectedFile ~= copyName then
+		selectedFile = copyName
+	end
 	if ImGui.Button("Save") then
+
 		if selectedFile ~= nil then
-			local savePath = saveConfigDirectory .. '/' .. selectedFile
-			if createBackup then
-				savePath = saveConfigDirectory .. '/' .. selectedFile:gsub("%.", "_backup%.") 
-			else
-				savePath = saveConfigDirectory .. '/' .. selectedFile 
-			end
+			local savePath = saveConfigDirectory .. '/' .. copyName
 			saveConfig(savePath) 
 			configFilePath = savePath 
 			loadConfig() 
 			showSaveFileSelector = false 
 		end
+		copyName = ''
 	end
 	ImGui.SameLine()
 	if ImGui.Button('Cancel##Save') then 
-		showSaveFileSelector = false 
+		showSaveFileSelector = false
+		copyName = ''
 	end
+	ImGui.Separator()
 end
 
 -- Main function to draw the GUI
