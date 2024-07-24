@@ -680,6 +680,15 @@ local function Draw_GUI()
 			showMainGUI = false 
 		end 
 		if showMain then 
+			if ImGui.IsWindowHovered(ImGuiHoveredFlags.ChildWindows) then
+				if ImGui.IsKeyDown(ImGuiMod.Ctrl) and ImGui.IsKeyDown(ImGuiKey.S) then
+					saveConfigDirectory = currentDirectory  -- Pre-select the current directory
+					local savePath = saveConfigDirectory .. '/' .. selectedFile
+					saveConfig(savePath) 
+					configFilePath = savePath 
+					loadConfig() 
+				end
+			end
 			if ImGui.BeginMenuBar() then 
 				if ImGui.BeginMenu("File") then 
 					if selectedFile ~= nil then
@@ -767,6 +776,7 @@ local function Draw_GUI()
 			end
 			ImGui.SetWindowFontScale(1)
 		end
+
 		LoadTheme.EndTheme(ColorCount, StyleCount)
 		ImGui.End()
 	end
